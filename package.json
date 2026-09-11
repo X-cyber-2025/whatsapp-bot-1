@@ -1,0 +1,13 @@
+{
+  "name": "whatsapp-group-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "@hapi/boom": "10.0.1",
+    "pino": "9.0.0"
+  }
+}
