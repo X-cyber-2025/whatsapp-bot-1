@@ -8,6 +8,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "@hapi/boom": "10.0.1",
-    "pino": "9.0.0"
+    "pino": "9.0.0",
+    "dotenv": "^17.2.2"
   }
 }
