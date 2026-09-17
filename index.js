@@ -28,6 +28,7 @@ const WEBSITE_URL =
 const AUTH_DIR = "./auth_info";
 const PAIRING_NUMBER_FILE = "./pairing_number.txt";
 const BOT_STATUS_FILE = "./bot_status.json";
+const WARNING_FILE = "./warnings.json";
 
 let sock = null;
 let reconnecting = false;
@@ -40,6 +41,589 @@ const lidToPhoneJid = new Map();
 const logger = P({
   level: "silent"
 });
+
+/* =========================================================
+   MODERATION CONFIG
+========================================================= */
+
+const MODERATION_DEFAULTS = {
+  badWords: true,
+  links: true,
+  warnings: true
+};
+
+/*
+ * এখানে Bad Words যোগ করতে পারবে।
+ * বাংলা + English দুটোই রাখা হয়েছে।
+ *
+ * প্রয়োজন হলে আরও শব্দ যোগ করতে পারবে।
+ */
+const BAD_WORDS = [
+  "সালা",
+  "শালা",
+  "সালি",
+  "সালী",
+  "শালি",
+  "ষালি",
+  "ষালী",
+  "খাংকি",
+  "খাংকী",
+  "খানকি",
+  "খানকী",
+  "মাগি",
+  "মাগী",
+  "বেসসা",
+  "বেশ্যা",
+  "চোদা",
+  "চোদন",
+  "চুদ",
+  "চুদা",
+  "চুদাচুদি",
+  "হারামি",
+  "হারামী",
+  "হারামজাদা",
+  "হারামজাদী",
+  "কুত্তা",
+  "কুত্তার",
+  "শুয়োর",
+  "শুয়োর",
+  "বাঞ্চোদ",
+  "বাল",
+  "বালের",
+  "ফাক",
+  "fuck",
+  "fucking",
+  "fucker",
+  "motherfucker",
+  "bitch",
+  "bastard",
+  "asshole",
+  "dick",
+  "pussy",
+  "sex",
+  "porn"
+];
+
+const MODERATION_COMMANDS = [
+  "mod",
+  "moderation",
+  "modstatus"
+];
+
+/*
+ * Warning শুধুমাত্র record করবে।
+ *
+ * কোনো Member:
+ * - Kick হবে না
+ * - Remove হবে না
+ * - Ban হবে না
+ */
+let warnings = {};
+
+function loadWarnings() {
+  try {
+    if (!fs.existsSync(WARNING_FILE)) {
+      warnings = {};
+      return;
+    }
+
+    warnings =
+      JSON.parse(
+        fs.readFileSync(
+          WARNING_FILE,
+          "utf8"
+        )
+      ) || {};
+
+    console.log("📂 Warning data loaded.");
+  } catch (error) {
+    console.log(
+      "⚠️ Warning data load error:",
+      error?.message
+    );
+
+    warnings = {};
+  }
+}
+
+function saveWarnings() {
+  try {
+    fs.writeFileSync(
+      WARNING_FILE,
+      JSON.stringify(
+        warnings,
+        null,
+        2
+      ),
+      "utf8"
+    );
+  } catch (error) {
+    console.log(
+      "⚠️ Warning data save error:",
+      error?.message
+    );
+  }
+}
+
+function getGroupWarningData(groupId) {
+  if (!warnings[groupId]) {
+    warnings[groupId] = {};
+  }
+
+  return warnings[groupId];
+}
+
+function getMemberWarningCount(
+  groupId,
+  memberJid
+) {
+  if (!groupId || !memberJid) {
+    return 0;
+  }
+
+  const groupWarnings =
+    getGroupWarningData(
+      groupId
+    );
+
+  return Number(
+    groupWarnings[memberJid] || 0
+  );
+}
+
+function addWarning(
+  groupId,
+  memberJid
+) {
+  if (!groupId || !memberJid) {
+    return 0;
+  }
+
+  const groupWarnings =
+    getGroupWarningData(
+      groupId
+    );
+
+  groupWarnings[memberJid] =
+    getMemberWarningCount(
+      groupId,
+      memberJid
+    ) + 1;
+
+  saveWarnings();
+
+  return groupWarnings[memberJid];
+}
+
+function clearWarning(
+  groupId,
+  memberJid
+) {
+  if (
+    !warnings[groupId] ||
+    !warnings[groupId][memberJid]
+  ) {
+    return;
+  }
+
+  delete warnings[groupId][memberJid];
+
+  saveWarnings();
+}
+
+function normalizeForBadWordCheck(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\s\-_.,!?()[\]{}:;'"`~|\\/]+/g, "");
+}
+
+function containsBadWord(text) {
+  if (!text) {
+    return null;
+  }
+
+  const normalized =
+    normalizeForBadWordCheck(
+      text
+    );
+
+  for (const word of BAD_WORDS) {
+    const normalizedWord =
+      normalizeForBadWordCheck(
+        word
+      );
+
+    if (
+      normalizedWord &&
+      normalized.includes(
+        normalizedWord
+      )
+    ) {
+      return word;
+    }
+  }
+
+  return null;
+}
+
+function containsLink(text) {
+  if (!text) {
+    return false;
+  }
+
+  const value =
+    String(text);
+
+  const linkPatterns = [
+    /https?:\/\/\S+/i,
+    /www\.\S+/i,
+    /\b[a-z0-9-]+\.(com|net|org|xyz|bd|me|io|co|app|site|online|info|dev|ly|gg)\b/i,
+    /\bt\.me\/\S+/i,
+    /\bwa\.me\/\S+/i,
+    /\bchat\.whatsapp\.com\/\S+/i
+  ];
+
+  return linkPatterns.some(
+    pattern =>
+      pattern.test(value)
+  );
+}
+
+function getModerationStatus(
+  groupId
+) {
+  const status =
+    getGroupStatus(
+      groupId
+    );
+
+  if (
+    typeof status.moderation !==
+    "object" ||
+    !status.moderation
+  ) {
+    status.moderation = {
+      ...MODERATION_DEFAULTS
+    };
+  }
+
+  for (
+    const [key, value]
+    of Object.entries(
+      MODERATION_DEFAULTS
+    )
+  ) {
+    if (
+      typeof status.moderation[key] !==
+      "boolean"
+    ) {
+      status.moderation[key] =
+        value;
+    }
+  }
+
+  return status.moderation;
+}
+
+function isModerationEnabled(
+  groupId,
+  type
+) {
+  return Boolean(
+    getModerationStatus(
+      groupId
+    )[type]
+  );
+}
+
+function setModerationStatus(
+  groupId,
+  type,
+  enabled
+) {
+  const moderation =
+    getModerationStatus(
+      groupId
+    );
+
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      moderation,
+      type
+    )
+  ) {
+    return false;
+  }
+
+  moderation[type] =
+    Boolean(enabled);
+
+  saveBotStatus();
+
+  return true;
+}
+
+async function deleteMessage(
+  remoteJid,
+  message
+) {
+  try {
+    if (
+      !sock ||
+      !remoteJid ||
+      !message?.key
+    ) {
+      return false;
+    }
+
+    await sock.sendMessage(
+      remoteJid,
+      {
+        delete:
+          message.key
+      }
+    );
+
+    return true;
+  } catch (error) {
+    console.log(
+      "⚠️ Message delete error:",
+      error?.message
+    );
+
+    return false;
+  }
+}
+
+async function sendModerationWarning(
+  remoteJid,
+  message,
+  reason,
+  warningCount
+) {
+  try {
+    const participant =
+      message?.key?.participant;
+
+    const phoneJid =
+      participant
+        ? await getPhoneJid({
+            id: participant
+          })
+        : null;
+
+    let text = `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       ⚠️ *MODERATION*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+🚫 এই Message টি Group Rule
+ভঙ্গ করার কারণে Delete করা হয়েছে।
+
+📌 *কারণ:* ${reason}
+
+⚠️ *Warning:* ${warningCount}
+
+❗ বারবার Group Rules ভঙ্গ
+না করার অনুরোধ করা হচ্ছে।
+
+🚫 Member Remove/Kick করা হয়নি।
+
+🤍 *Piyas Bot*
+`;
+
+    const messageData = {
+      text
+    };
+
+    if (isPhoneJid(phoneJid)) {
+      messageData.mentions = [
+        phoneJid
+      ];
+    }
+
+    await sock.sendMessage(
+      remoteJid,
+      messageData
+    );
+  } catch (error) {
+    console.log(
+      "⚠️ Moderation warning error:",
+      error?.message
+    );
+  }
+}
+
+async function moderateMessage(
+  remoteJid,
+  message,
+  text
+) {
+  try {
+    if (
+      !remoteJid ||
+      !message ||
+      !text
+    ) {
+      return false;
+    }
+
+    if (
+      !isBotEnabled(
+        remoteJid
+      )
+    ) {
+      return false;
+    }
+
+    const sender =
+      message?.key?.participant;
+
+    /*
+     * Sender Admin হলে moderation skip করবে।
+     */
+    if (sender) {
+      const admin =
+        await isSenderAdmin(
+          remoteJid,
+          message
+        );
+
+      if (admin) {
+        return false;
+      }
+    }
+
+    /*
+     * Bad Word Filter
+     */
+    if (
+      isModerationEnabled(
+        remoteJid,
+        "badWords"
+      )
+    ) {
+      const badWord =
+        containsBadWord(
+          text
+        );
+
+      if (badWord) {
+        const deleted =
+          await deleteMessage(
+            remoteJid,
+            message
+          );
+
+        if (deleted) {
+          let warningCount = 0;
+
+          if (
+            isModerationEnabled(
+              remoteJid,
+              "warnings"
+            ) &&
+            sender
+          ) {
+            const memberJid =
+              await getPhoneJid({
+                id: sender
+              });
+
+            const warningJid =
+              memberJid ||
+              sender;
+
+            warningCount =
+              addWarning(
+                remoteJid,
+                warningJid
+              );
+          }
+
+          if (
+            isModerationEnabled(
+              remoteJid,
+              "warnings"
+            )
+          ) {
+            await sendModerationWarning(
+              remoteJid,
+              message,
+              `Bad Word: ${badWord}`,
+              warningCount
+            );
+          }
+        }
+
+        return true;
+      }
+    }
+
+    /*
+     * Link Protection
+     */
+    if (
+      isModerationEnabled(
+        remoteJid,
+        "links"
+      ) &&
+      containsLink(text)
+    ) {
+      const deleted =
+        await deleteMessage(
+          remoteJid,
+          message
+        );
+
+      if (deleted) {
+        let warningCount = 0;
+
+        if (
+          isModerationEnabled(
+            remoteJid,
+            "warnings"
+          ) &&
+          sender
+        ) {
+          const memberJid =
+            await getPhoneJid({
+              id: sender
+            });
+
+          const warningJid =
+            memberJid ||
+            sender;
+
+          warningCount =
+            addWarning(
+              remoteJid,
+              warningJid
+            );
+        }
+
+        await sendModerationWarning(
+          remoteJid,
+          message,
+          "Link / URL",
+          warningCount
+        );
+      }
+
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.log(
+      "⚠️ Moderation error:",
+      error?.message
+    );
+
+    return false;
+  }
+}
 
 /* =========================================================
    COMMAND DEFINITIONS
@@ -132,7 +716,12 @@ const ADMIN_ONLY_COMMANDS = [
   "on",
   "off",
   "boton",
-  "botoff"
+  "botoff",
+  "mod",
+  "moderation",
+  "modstatus",
+  "modon",
+  "modoff"
 ];
 
 /* =========================================================
@@ -145,7 +734,12 @@ const PROTECTED_COMMANDS = [
   "on",
   "off",
   "boton",
-  "botoff"
+  "botoff",
+  "mod",
+  "moderation",
+  "modstatus",
+  "modon",
+  "modoff"
 ];
 
 /* =========================================================
@@ -176,7 +770,10 @@ function loadBotStatus() {
       if (typeof value === "boolean") {
         botStatus[groupId] = {
           enabled: value,
-          disabledCommands: []
+          disabledCommands: [],
+          moderation: {
+            ...MODERATION_DEFAULTS
+          }
         };
       }
 
@@ -186,7 +783,10 @@ function loadBotStatus() {
       ) {
         botStatus[groupId] = {
           enabled: true,
-          disabledCommands: []
+          disabledCommands: [],
+          moderation: {
+            ...MODERATION_DEFAULTS
+          }
         };
       }
 
@@ -196,6 +796,31 @@ function loadBotStatus() {
         )
       ) {
         botStatus[groupId].disabledCommands = [];
+      }
+
+      if (
+        !botStatus[groupId].moderation ||
+        typeof botStatus[groupId].moderation !==
+          "object"
+      ) {
+        botStatus[groupId].moderation = {
+          ...MODERATION_DEFAULTS
+        };
+      }
+
+      for (
+        const [key, defaultValue]
+        of Object.entries(
+          MODERATION_DEFAULTS
+        )
+      ) {
+        if (
+          typeof botStatus[groupId].moderation[key] !==
+          "boolean"
+        ) {
+          botStatus[groupId].moderation[key] =
+            defaultValue;
+        }
       }
     }
 
@@ -233,7 +858,10 @@ function getGroupStatus(groupId) {
   if (!botStatus[groupId]) {
     botStatus[groupId] = {
       enabled: true,
-      disabledCommands: []
+      disabledCommands: [],
+      moderation: {
+        ...MODERATION_DEFAULTS
+      }
     };
   }
 
@@ -243,6 +871,15 @@ function getGroupStatus(groupId) {
     )
   ) {
     botStatus[groupId].disabledCommands = [];
+  }
+
+  if (
+    !botStatus[groupId].moderation ||
+    typeof botStatus[groupId].moderation !== "object"
+  ) {
+    botStatus[groupId].moderation = {
+      ...MODERATION_DEFAULTS
+    };
   }
 
   return botStatus[groupId];
@@ -278,7 +915,9 @@ function normalizeCommandName(command) {
 
 function getCanonicalCommand(command) {
   const normalized =
-    normalizeCommandName(command);
+    normalizeCommandName(
+      command
+    );
 
   if (!normalized) {
     return "";
@@ -292,18 +931,23 @@ function getCanonicalCommand(command) {
 
 function getCommandDefinition(command) {
   const key =
-    getCanonicalCommand(command);
+    getCanonicalCommand(
+      command
+    );
 
   return (
     COMMAND_DEFINITIONS.find(
-      item => item.key === key
+      item =>
+        item.key === key
     ) || null
   );
 }
 
 function isKnownCommand(command) {
   return Boolean(
-    getCommandDefinition(command)
+    getCommandDefinition(
+      command
+    )
   );
 }
 
@@ -312,7 +956,9 @@ function isCommandEnabled(
   command
 ) {
   const name =
-    getCanonicalCommand(command);
+    getCanonicalCommand(
+      command
+    );
 
   if (!name) {
     return true;
@@ -320,7 +966,9 @@ function isCommandEnabled(
 
   return !getGroupStatus(
     groupId
-  ).disabledCommands.includes(name);
+  ).disabledCommands.includes(
+    name
+  );
 }
 
 function setCommandStatus(
@@ -329,14 +977,18 @@ function setCommandStatus(
   enabled
 ) {
   const name =
-    getCanonicalCommand(command);
+    getCanonicalCommand(
+      command
+    );
 
   if (!name) {
     return false;
   }
 
   const status =
-    getGroupStatus(groupId);
+    getGroupStatus(
+      groupId
+    );
 
   const list =
     status.disabledCommands;
@@ -346,7 +998,10 @@ function setCommandStatus(
 
   if (enabled) {
     if (index !== -1) {
-      list.splice(index, 1);
+      list.splice(
+        index,
+        1
+      );
     }
   } else {
     if (index === -1) {
@@ -360,6 +1015,7 @@ function setCommandStatus(
 }
 
 loadBotStatus();
+loadWarnings();
 
 /* =========================================================
    HTTP SERVER
@@ -679,7 +1335,9 @@ function saveLidMapping(
 
   if (!isPhoneJid(phoneJid)) {
     phoneJid =
-      phoneNumberToJid(phoneJid);
+      phoneNumberToJid(
+        phoneJid
+      );
   }
 
   if (!isPhoneJid(phoneJid)) {
@@ -1298,14 +1956,6 @@ async function isBotAdminInGroup(
    GROUP ACCESS
 ========================================================= */
 
-/*
- * GROUP_ID আর ব্যবহার করা হচ্ছে না।
- *
- * যে Number দিয়ে Bot WhatsApp-এ Connected,
- * সেই Number কোনো Group-এর Admin হলেই
- * Bot সেই Group-এ কাজ করবে।
- */
-
 async function isGroupAllowed(
   groupId
 ) {
@@ -1620,6 +2270,8 @@ ${
 ╰────────────────────
 
 ━━━━━━━━━━━━━━━━━━━━
+📌 সব Command-এর আগে "/" ব্যবহার করতে হবে।
+━━━━━━━━━━━━━━━━━━━━
 `;
 }
 
@@ -1699,9 +2351,18 @@ async function sendAdminPanel(
             enabled
               ? "🟢"
               : "🔴"
-          } ${item.command}`;
+          } ${item.command} ${
+            enabled
+              ? "ON"
+              : "OFF"
+          }`;
         })
         .join("\n");
+
+    const moderation =
+      getModerationStatus(
+        remoteJid
+      );
 
     const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
@@ -1726,6 +2387,39 @@ async function sendAdminPanel(
 ${commandStatus}
 ╰────────────────────
 
+╭─❖ 🛡️ *MODERATION STATUS*
+│
+│ ${
+      moderation.badWords
+        ? "🟢"
+        : "🔴"
+    } Bad Word Filter: ${
+      moderation.badWords
+        ? "ON"
+        : "OFF"
+    }
+│ ${
+      moderation.links
+        ? "🟢"
+        : "🔴"
+    } Link Protection: ${
+      moderation.links
+        ? "ON"
+        : "OFF"
+    }
+│ ${
+      moderation.warnings
+        ? "🟢"
+        : "🔴"
+    } Warning System: ${
+      moderation.warnings
+        ? "ON"
+        : "OFF"
+    }
+│ 🚫 Member Remove: DISABLED
+│ 🚫 Kick/Ban: DISABLED
+╰────────────────────
+
 ╭─❖ 🛠️ *BOT CONTROL*
 │
 │ 🟢 /boton
@@ -1739,19 +2433,11 @@ ${commandStatus}
 │ 📋 /cmdlist
 ╰────────────────────
 
-╭─❖ 💡 *EXAMPLE*
+╭─❖ 🛡️ *MODERATION CONTROL*
 │
-│ /on admin
-│ /off admin
-│
-│ /on deal
-│ /off deal
-│
-│ /on rules
-│ /off rules
-│
-│ /on website
-│ /off website
+│ 📊 /mod
+│ 🟢 /modon
+│ 🔴 /modoff
 ╰────────────────────
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1780,7 +2466,10 @@ ${commandStatus}
         "/on rules",
         "/off rules",
         "/on website",
-        "/off website"
+        "/off website",
+        "/mod",
+        "/modon",
+        "/modoff"
       ]
     );
   } catch (error) {
@@ -1804,7 +2493,7 @@ async function sendCommandList(
     ).disabledCommands ||
     [];
 
-  const lines =
+  const commandLines =
     COMMAND_DEFINITIONS
       .map(item => {
         const enabled =
@@ -1814,23 +2503,43 @@ async function sendCommandList(
 
         return `${
           enabled
-            ? "🟢"
-            : "🔴"
+            ? "🟢 ON "
+            : "🔴 OFF"
         } ${item.command}`;
-      })
-      .join("\n");
+      });
+
+  const moderation =
+    getModerationStatus(
+      remoteJid
+    );
+
+  const onCount =
+    COMMAND_DEFINITIONS.filter(
+      item =>
+        !disabled.includes(
+          item.key
+        )
+    ).length;
+
+  const offCount =
+    COMMAND_DEFINITIONS.length -
+    onCount;
 
   const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
       📋 *COMMAND STATUS*
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-${lines}
+${commandLines.join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🟢 *ON:* ${onCount}
+🔴 *OFF:* ${offCount}
 
 ━━━━━━━━━━━━━━━━━━━━
 
 🤖 *BOT STATUS:*
-
 ${
   isBotEnabled(
     remoteJid
@@ -1840,6 +2549,45 @@ ${
 }
 
 ━━━━━━━━━━━━━━━━━━━━
+
+🛡️ *MODERATION:*
+
+${
+  moderation.badWords
+    ? "🟢"
+    : "🔴"
+} Bad Word Filter: ${
+    moderation.badWords
+      ? "ON"
+      : "OFF"
+  }
+
+${
+  moderation.links
+    ? "🟢"
+    : "🔴"
+} Link Protection: ${
+    moderation.links
+      ? "ON"
+      : "OFF"
+  }
+
+${
+  moderation.warnings
+    ? "🟢"
+    : "🔴"
+} Warning System: ${
+    moderation.warnings
+      ? "ON"
+      : "OFF"
+  }
+
+🚫 Member Remove: OFF
+🚫 Kick/Ban: OFF
+
+━━━━━━━━━━━━━━━━━━━━
+
+📌 সব Command-এর আগে "/" আবশ্যক।
 
 👑 শুধুমাত্র Admin ও Owner
 এই Status দেখতে পারবেন।
@@ -1854,10 +2602,108 @@ ${
 
   await sendCopyButtons(
     remoteJid,
-    COMMAND_DEFINITIONS.map(
-      item =>
-        item.command
-    )
+    [
+      "/cmdlist",
+      ...COMMAND_DEFINITIONS.map(
+        item =>
+          item.command
+      )
+    ]
+  );
+}
+
+/* =========================================================
+   MODERATION STATUS
+========================================================= */
+
+async function sendModerationStatus(
+  remoteJid
+) {
+  const moderation =
+    getModerationStatus(
+      remoteJid
+    );
+
+  const text = `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🛡️ *MODERATION*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+🛡️ *Moderation Status*
+
+${
+  moderation.badWords
+    ? "🟢"
+    : "🔴"
+} Bad Word Filter:
+${
+  moderation.badWords
+    ? "ON"
+    : "OFF"
+}
+
+${
+  moderation.links
+    ? "🟢"
+    : "🔴"
+} Link Protection:
+${
+  moderation.links
+    ? "ON"
+    : "OFF"
+}
+
+${
+  moderation.warnings
+    ? "🟢"
+    : "🔴"
+} Warning System:
+${
+  moderation.warnings
+    ? "ON"
+    : "OFF"
+}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🚫 Member Remove:
+🔴 DISABLED
+
+🚫 Kick:
+🔴 DISABLED
+
+🚫 Ban:
+🔴 DISABLED
+
+━━━━━━━━━━━━━━━━━━━━
+
+👑 *Admin Controls*
+
+🟢 /modon
+🔴 /modoff
+
+━━━━━━━━━━━━━━━━━━━━
+
+📌 /modon দিলে Moderation ON
+📌 /modoff দিলে Moderation OFF
+
+🤍 *Piyas Bot*
+`;
+
+  await sock.sendMessage(
+    remoteJid,
+    {
+      text
+    }
+  );
+
+  await sendCopyButtons(
+    remoteJid,
+    [
+      "/mod",
+      "/modon",
+      "/modoff"
+    ]
   );
 }
 
@@ -1890,6 +2736,13 @@ Google Play Points সম্পর্কিত
 
 7️⃣ কোনো সমস্যায় পড়লে
 সরাসরি Admin-কে জানান।
+
+🛡️ *Moderation System:*
+Bad Word এবং Link শনাক্ত হলে
+Message Delete হতে পারে।
+
+⚠️ Admin/Owner-এর Message
+Moderation থেকে বাদ থাকবে।
 
 🤍 সবাই মিলে গ্রুপের
 পরিবেশ সুন্দর রাখুন।
@@ -2527,21 +3380,6 @@ async function generatePairingCode(
       return;
     }
 
-    const savedNumber =
-      readSavedPairingNumber();
-
-    if (
-      savedNumber &&
-      savedNumber ===
-        PHONE_NUMBER
-    ) {
-      console.log(
-        "ℹ️ Same PHONE_NUMBER detected."
-      );
-
-      return;
-    }
-
     if (pairingRequested) {
       return;
     }
@@ -2804,13 +3642,6 @@ async function startBot() {
             return;
           }
 
-          /*
-           * GROUP_ID আর নেই।
-           *
-           * Connected WhatsApp Number
-           * Group Admin হলেই কাজ করবে।
-           */
-
           const botIsAdmin =
             await isGroupAllowed(
               groupId
@@ -2906,6 +3737,7 @@ async function startBot() {
             );
 
             reconnecting = false;
+            pairingRequested = false;
 
             try {
               const groups =
@@ -2926,10 +3758,6 @@ async function startBot() {
                 "📦 Group participant cache loaded."
               );
 
-              /*
-               * কোন কোন Group-এ Connected Number
-               * Admin আছে সেটা Console-এ দেখাবে।
-               */
               let adminGroupCount = 0;
 
               for (
@@ -3073,14 +3901,6 @@ async function startBot() {
 
               /* =========================================
                  GROUP ACCESS
-                 
-                 GROUP_ID লাগবে না।
-                 
-                 Connected Number যদি এই Group-এর
-                 Admin হয় → Bot কাজ করবে।
-                 
-                 Connected Number Admin না হলে
-                 → Bot কাজ করবে না।
               ========================================= */
 
               const botIsAdmin =
@@ -3113,9 +3933,63 @@ async function startBot() {
                 `👥 GROUP: ${remoteJid}`
               );
 
+              /* =========================================
+                 MODERATION
+                 
+                 Admin/Owner বাদ দিয়ে
+                 Bad Word / Link check হবে।
+                 
+                 Message moderation হলে
+                 নিচের Command processing
+                 আর চলবে না।
+              ========================================= */
+
+              const moderated =
+                await moderateMessage(
+                  remoteJid,
+                  message,
+                  text
+                );
+
+              if (moderated) {
+                console.log(
+                  "🛡️ Message moderated."
+                );
+
+                continue;
+              }
+
+              /*
+               * =================================================
+               * "/" বাধ্যতামূলক
+               *
+               * menu       ❌
+               * admin      ❌
+               * rules      ❌
+               * ডিল        ❌
+               *
+               * /menu      ✅
+               * /admin     ✅
+               * /rules     ✅
+               * /ডিল       ✅
+               * =================================================
+               */
+
+              const trimmedText =
+                text.trim();
+
+              if (
+                !trimmedText.startsWith("/")
+              ) {
+                console.log(
+                  `ℹ️ Not a command: ${text}`
+                );
+
+                continue;
+              }
+
               const parts =
-                text
-                  .trim()
+                trimmedText
                   .split(
                     /\s+/
                   );
@@ -3254,6 +4128,118 @@ async function startBot() {
               ) {
                 await sendAdminPanel(
                   remoteJid
+                );
+
+                continue;
+              }
+
+              /* =============================================
+                 MODERATION STATUS
+              ============================================= */
+
+              if (
+                command === "mod" ||
+                command === "moderation" ||
+                command === "modstatus"
+              ) {
+                await sendModerationStatus(
+                  remoteJid
+                );
+
+                continue;
+              }
+
+              /* =============================================
+                 MODERATION ON
+              ============================================= */
+
+              if (
+                command === "modon"
+              ) {
+                setModerationStatus(
+                  remoteJid,
+                  "badWords",
+                  true
+                );
+
+                setModerationStatus(
+                  remoteJid,
+                  "links",
+                  true
+                );
+
+                setModerationStatus(
+                  remoteJid,
+                  "warnings",
+                  true
+                );
+
+                await sock.sendMessage(
+                  remoteJid,
+                  {
+                    text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🛡️ *MODERATION ON*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+🟢 Bad Word Filter: ON
+🟢 Link Protection: ON
+🟢 Warning System: ON
+
+🚫 Member Remove: OFF
+🚫 Kick/Ban: OFF
+
+✅ Moderation System চালু হয়েছে।
+`
+                  }
+                );
+
+                continue;
+              }
+
+              /* =============================================
+                 MODERATION OFF
+              ============================================= */
+
+              if (
+                command === "modoff"
+              ) {
+                setModerationStatus(
+                  remoteJid,
+                  "badWords",
+                  false
+                );
+
+                setModerationStatus(
+                  remoteJid,
+                  "links",
+                  false
+                );
+
+                setModerationStatus(
+                  remoteJid,
+                  "warnings",
+                  false
+                );
+
+                await sock.sendMessage(
+                  remoteJid,
+                  {
+                    text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🛡️ *MODERATION OFF*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+🔴 Bad Word Filter: OFF
+🔴 Link Protection: OFF
+🔴 Warning System: OFF
+
+🚫 Member Remove: OFF
+🚫 Kick/Ban: OFF
+
+❌ Moderation System বন্ধ হয়েছে।
+`
+                  }
                 );
 
                 continue;
@@ -3726,6 +4712,11 @@ ${COMMAND_DEFINITIONS
                       )
                     : "Unknown";
 
+                const moderation =
+                  getModerationStatus(
+                    remoteJid
+                  );
+
                 await sock.sendMessage(
                   remoteJid,
                   {
@@ -3760,6 +4751,26 @@ ${COMMAND_DEFINITIONS
                         ? "🟢 ON"
                         : "🔴 OFF"
                     }
+
+🛡️ *Bad Word:* ${
+                      moderation.badWords
+                        ? "🟢 ON"
+                        : "🔴 OFF"
+                    }
+
+🔗 *Link Protection:* ${
+                      moderation.links
+                        ? "🟢 ON"
+                        : "🔴 OFF"
+                    }
+
+⚠️ *Warning:* ${
+                      moderation.warnings
+                        ? "🟢 ON"
+                        : "🔴 OFF"
+                    }
+
+🚫 *Kick/Ban:* OFF
 
 🤍 *Powered by Piyas*
 `
@@ -3982,5 +4993,6 @@ process.on(
 ========================================================= */
 
 loadBotStatus();
+loadWarnings();
 
 startBot();
