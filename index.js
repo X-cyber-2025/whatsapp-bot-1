@@ -25,6 +25,9 @@ const PHONE_NUMBER = (process.env.PHONE_NUMBER || "")
 const WEBSITE_URL =
   "https://x-cyber-2025.github.io/X-cyber.web/";
 
+const BACKUP_GROUP_URL =
+  "https://chat.whatsapp.com/KsIJqeOdSTVC2FBIuWCvlN?s=cl&p=a&mlu=4&ilr=4";
+
 const AUTH_DIR = "./auth_info";
 const PAIRING_NUMBER_FILE = "./pairing_number.txt";
 const BOT_STATUS_FILE = "./bot_status.json";
@@ -38,6 +41,18 @@ const contactNames = new Map();
 const contactPhoneJids = new Map();
 const lidToPhoneJid = new Map();
 
+/* =========================================================
+   DUPLICATE SPAM MEMORY
+========================================================= */
+
+const spamTracker = new Map();
+
+const SPAM_WINDOW_MS = 60 * 1000;
+
+/* =========================================================
+   LOGGER
+========================================================= */
+
 const logger = P({
   level: "silent"
 });
@@ -49,15 +64,14 @@ const logger = P({
 const MODERATION_DEFAULTS = {
   badWords: true,
   links: true,
+  spam: true,
   warnings: true
 };
 
-/*
- * এখানে Bad Words যোগ করতে পারবে।
- * বাংলা + English দুটোই রাখা হয়েছে।
- *
- * প্রয়োজন হলে আরও শব্দ যোগ করতে পারবে।
- */
+/* =========================================================
+   BAD WORDS
+========================================================= */
+
 const BAD_WORDS = [
   "সালা",
   "শালা",
@@ -104,20 +118,20 @@ const BAD_WORDS = [
   "porn"
 ];
 
+/* =========================================================
+   MODERATION COMMANDS
+========================================================= */
+
 const MODERATION_COMMANDS = [
   "mod",
   "moderation",
   "modstatus"
 ];
 
-/*
- * Warning শুধুমাত্র record করবে।
- *
- * কোনো Member:
- * - Kick হবে না
- * - Remove হবে না
- * - Ban হবে না
- */
+/* =========================================================
+   WARNING DATA
+========================================================= */
+
 let warnings = {};
 
 function loadWarnings() {
@@ -231,6 +245,10 @@ function clearWarning(
   saveWarnings();
 }
 
+/* =========================================================
+   BAD WORD CHECK
+========================================================= */
+
 function normalizeForBadWordCheck(text) {
   return String(text || "")
     .toLowerCase()
@@ -267,6 +285,10 @@ function containsBadWord(text) {
   return null;
 }
 
+/* =========================================================
+   LINK CHECK
+========================================================= */
+
 function containsLink(text) {
   if (!text) {
     return false;
@@ -290,6 +312,120 @@ function containsLink(text) {
   );
 }
 
+/* =========================================================
+   DUPLICATE SPAM HELPERS
+========================================================= */
+
+function normalizeSpamText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSpamKey(
+  groupId,
+  memberJid
+) {
+  return `${groupId}:${memberJid}`;
+}
+
+function isDuplicateSpam(
+  groupId,
+  memberJid,
+  text
+) {
+  if (
+    !groupId ||
+    !memberJid ||
+    !text
+  ) {
+    return false;
+  }
+
+  const normalized =
+    normalizeSpamText(
+      text
+    );
+
+  if (!normalized) {
+    return false;
+  }
+
+  const key =
+    getSpamKey(
+      groupId,
+      memberJid
+    );
+
+  const now =
+    Date.now();
+
+  const previous =
+    spamTracker.get(key);
+
+  if (
+    previous &&
+    previous.text === normalized &&
+    now - previous.time <
+      SPAM_WINDOW_MS
+  ) {
+    spamTracker.set(
+      key,
+      {
+        text: normalized,
+        time: now
+      }
+    );
+
+    return true;
+  }
+
+  spamTracker.set(
+    key,
+    {
+      text: normalized,
+      time: now
+    }
+  );
+
+  return false;
+}
+
+/* =========================================================
+   CLEAN OLD SPAM TRACKER DATA
+========================================================= */
+
+setInterval(
+  () => {
+    const now =
+      Date.now();
+
+    for (
+      const [
+        key,
+        data
+      ] of spamTracker.entries()
+    ) {
+      if (
+        !data ||
+        now - data.time >
+          SPAM_WINDOW_MS * 2
+      ) {
+        spamTracker.delete(
+          key
+        );
+      }
+    }
+  },
+  5 * 60 * 1000
+);
+
+/* =========================================================
+   MODERATION STATUS
+========================================================= */
+
 function getModerationStatus(
   groupId
 ) {
@@ -309,8 +445,10 @@ function getModerationStatus(
   }
 
   for (
-    const [key, value]
-    of Object.entries(
+    const [
+      key,
+      value
+    ] of Object.entries(
       MODERATION_DEFAULTS
     )
   ) {
@@ -364,6 +502,10 @@ function setModerationStatus(
   return true;
 }
 
+/* =========================================================
+   DELETE MESSAGE
+========================================================= */
+
 async function deleteMessage(
   remoteJid,
   message
@@ -396,6 +538,10 @@ async function deleteMessage(
   }
 }
 
+/* =========================================================
+   MODERATION WARNING
+========================================================= */
+
 async function sendModerationWarning(
   remoteJid,
   message,
@@ -413,7 +559,7 @@ async function sendModerationWarning(
           })
         : null;
 
-    let text = `
+    const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
        ⚠️ *MODERATION*
 ╰━━━━━━━━━━━━━━━━━━━━╯
@@ -455,6 +601,10 @@ async function sendModerationWarning(
   }
 }
 
+/* =========================================================
+   MODERATE MESSAGE
+========================================================= */
+
 async function moderateMessage(
   remoteJid,
   message,
@@ -495,9 +645,10 @@ async function moderateMessage(
       }
     }
 
-    /*
-     * Bad Word Filter
-     */
+    /* =============================================
+       BAD WORD FILTER
+    ============================================= */
+
     if (
       isModerationEnabled(
         remoteJid,
@@ -561,9 +712,10 @@ async function moderateMessage(
       }
     }
 
-    /*
-     * Link Protection
-     */
+    /* =============================================
+       LINK PROTECTION
+    ============================================= */
+
     if (
       isModerationEnabled(
         remoteJid,
@@ -612,6 +764,78 @@ async function moderateMessage(
       }
 
       return true;
+    }
+
+    /* =============================================
+       DUPLICATE SPAM PROTECTION
+
+       Same member + same message
+       within 1 minute = SPAM
+    ============================================= */
+
+    if (
+      isModerationEnabled(
+        remoteJid,
+        "spam"
+      ) &&
+      sender
+    ) {
+      const memberJid =
+        await getPhoneJid({
+          id: sender
+        });
+
+      const spamJid =
+        memberJid ||
+        sender;
+
+      const duplicate =
+        isDuplicateSpam(
+          remoteJid,
+          spamJid,
+          text
+        );
+
+      if (duplicate) {
+        const deleted =
+          await deleteMessage(
+            remoteJid,
+            message
+          );
+
+        if (deleted) {
+          let warningCount = 0;
+
+          if (
+            isModerationEnabled(
+              remoteJid,
+              "warnings"
+            )
+          ) {
+            warningCount =
+              addWarning(
+                remoteJid,
+                spamJid
+              );
+          }
+
+          if (
+            isModerationEnabled(
+              remoteJid,
+              "warnings"
+            )
+          ) {
+            await sendModerationWarning(
+              remoteJid,
+              message,
+              "Duplicate Spam: একই Message ১ মিনিটের মধ্যে পুনরায় পাঠানো হয়েছে",
+              warningCount
+            );
+          }
+        }
+
+        return true;
+      }
     }
 
     return false;
@@ -809,8 +1033,10 @@ function loadBotStatus() {
       }
 
       for (
-        const [key, defaultValue]
-        of Object.entries(
+        const [
+          key,
+          defaultValue
+        ] of Object.entries(
           MODERATION_DEFAULTS
         )
       ) {
@@ -875,11 +1101,29 @@ function getGroupStatus(groupId) {
 
   if (
     !botStatus[groupId].moderation ||
-    typeof botStatus[groupId].moderation !== "object"
+    typeof botStatus[groupId].moderation !==
+      "object"
   ) {
     botStatus[groupId].moderation = {
       ...MODERATION_DEFAULTS
     };
+  }
+
+  for (
+    const [
+      key,
+      defaultValue
+    ] of Object.entries(
+      MODERATION_DEFAULTS
+    )
+  ) {
+    if (
+      typeof botStatus[groupId].moderation[key] !==
+      "boolean"
+    ) {
+      botStatus[groupId].moderation[key] =
+        defaultValue;
+    }
   }
 
   return botStatus[groupId];
@@ -2408,6 +2652,15 @@ ${commandStatus}
         : "OFF"
     }
 │ ${
+      moderation.spam
+        ? "🟢"
+        : "🔴"
+    } Duplicate Spam: ${
+      moderation.spam
+        ? "ON"
+        : "OFF"
+    }
+│ ${
       moderation.warnings
         ? "🟢"
         : "🔴"
@@ -2573,6 +2826,16 @@ ${
   }
 
 ${
+  moderation.spam
+    ? "🟢"
+    : "🔴"
+} Duplicate Spam: ${
+    moderation.spam
+      ? "ON"
+      : "OFF"
+  }
+
+${
   moderation.warnings
     ? "🟢"
     : "🔴"
@@ -2586,6 +2849,11 @@ ${
 🚫 Kick/Ban: OFF
 
 ━━━━━━━━━━━━━━━━━━━━
+
+📌 Duplicate Spam:
+একই Member একই Message
+১ মিনিটের মধ্যে পুনরায় পাঠালে
+Spam হিসেবে Delete হবে।
 
 📌 সব Command-এর আগে "/" আবশ্যক।
 
@@ -2640,7 +2908,7 @@ ${
   moderation.badWords
     ? "ON"
     : "OFF"
-}
+  }
 
 ${
   moderation.links
@@ -2651,7 +2919,18 @@ ${
   moderation.links
     ? "ON"
     : "OFF"
-}
+  }
+
+${
+  moderation.spam
+    ? "🟢"
+    : "🔴"
+} Duplicate Spam:
+${
+  moderation.spam
+    ? "ON"
+    : "OFF"
+  }
 
 ${
   moderation.warnings
@@ -2662,9 +2941,16 @@ ${
   moderation.warnings
     ? "ON"
     : "OFF"
-}
+  }
 
 ━━━━━━━━━━━━━━━━━━━━
+
+📌 *Spam Rule:*
+
+একই Member একই Message
+১ মিনিটের মধ্যে আবার পাঠালে
+দ্বিতীয় Message Delete হবে
+এবং Warning দেওয়া হবে।
 
 🚫 Member Remove:
 🔴 DISABLED
@@ -2724,25 +3010,34 @@ const GROUP_RULES = `
 3️⃣ Spam বা একই মেসেজ
 বারবার পাঠাবেন না।
 
-4️⃣ সন্দেহজনক বা প্রতারণামূলক
+4️⃣ একই Message ১ মিনিটের
+মধ্যে পুনরায় পাঠালে Spam
+হিসেবে Delete হতে পারে।
+
+5️⃣ সন্দেহজনক বা প্রতারণামূলক
 লিংক শেয়ার করবেন না।
 
-5️⃣ অন্য সদস্যকে হয়রানি
+6️⃣ অন্য সদস্যকে হয়রানি
 বা বিরক্ত করবেন না।
 
-6️⃣ Account Buy/Sell ও
+7️⃣ Account Buy/Sell ও
 Google Play Points সম্পর্কিত
 বিষয়ে সবাই সতর্ক থাকুন।
 
-7️⃣ কোনো সমস্যায় পড়লে
+8️⃣ কোনো সমস্যায় পড়লে
 সরাসরি Admin-কে জানান।
 
 🛡️ *Moderation System:*
-Bad Word এবং Link শনাক্ত হলে
-Message Delete হতে পারে।
+
+Bad Word, Link এবং Duplicate
+Spam শনাক্ত হলে Message
+Delete হতে পারে।
 
 ⚠️ Admin/Owner-এর Message
 Moderation থেকে বাদ থাকবে।
+
+🚫 Member Remove/Kick/Ban
+করা হবে না।
 
 🤍 সবাই মিলে গ্রুপের
 পরিবেশ সুন্দর রাখুন।
@@ -3159,20 +3454,28 @@ async function sendDealNotice(
 ========================================================= */
 
 function getWelcomeText(
-  name
+  name,
+  groupName
 ) {
+  const safeName =
+    cleanName(name) ||
+    "Member";
+
+  const safeGroupName =
+    cleanName(groupName) ||
+    "এই গ্রুপ";
+
   return `
 ╭━━━━━━━━━━━━━━━━━━━━╮
         🎉 *স্বাগতম*
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-🎉 *স্বাগতম @${name}!* ❤️
+🎉 *স্বাগতম @${safeName}* ❤️
 
-🌸 আপনাকে *Play point League*
+🌸 আপনাকে *${safeGroupName}*
 গ্রুপে স্বাগতম।
 
-💬 এখানে সবাই একে অপরকে
-সহযোগিতা করবেন।
+💬 এখানে সবাই একে অপরকে সহযোগিতা করবেন।
 
 📌 গ্রুপের নিয়ম দেখতে লিখুন:
 */rules*
@@ -3180,23 +3483,21 @@ function getWelcomeText(
 🌐 Website দেখতে লিখুন:
 */website*
 
-⚡ Account Buy/Sell ও
-Google Play Points সম্পর্কিত
-তথ্য এখানে শেয়ার করা হয়।
+⚡ Account Buy/Sell ও Google Play Points সম্পর্কিত তথ্য এখানে শেয়ার করা হয়।
 
 ⚠️ *বিশেষ সতর্কতা:*
 
-যেকোনো সমস্যায় পড়লে
-সরাসরি Admin-কে জানাবেন।
+যেকোনো সমস্যায় পড়লে সরাসরি Admin-কে জানাবেন।
 
-কোনো ধরনের প্রতারণা বা
-সন্দেহজনক বিষয় দেখলে
-Admin-কে জানান।
+কোনো ধরনের প্রতারণা বা সন্দেহজনক বিষয় দেখলে Admin-কে জানান।
 
-🌐 *Our Official Website:*
+🌐 আমাদের Website:
 ${WEBSITE_URL}
 
-🤍 *Piyas*
+🔰 *ব্যাকআপ গ্রুপে যুক্ত থাকুন:*
+${BACKUP_GROUP_URL}
+
+❤️ *Piyas*
 `;
 }
 
@@ -3252,9 +3553,21 @@ async function sendWelcome(
         member
       );
 
+    const groupName =
+      cleanName(
+        metadata?.subject
+      ) ||
+      "এই গ্রুপ";
+
     const phoneJid =
       await getPhoneJid(
         member
+      );
+
+    const welcomeText =
+      getWelcomeText(
+        name,
+        groupName
       );
 
     if (
@@ -3266,9 +3579,7 @@ async function sendWelcome(
         groupId,
         {
           text:
-            getWelcomeText(
-              name
-            ),
+            welcomeText,
           mentions: [
             phoneJid
           ]
@@ -3279,9 +3590,7 @@ async function sendWelcome(
         groupId,
         {
           text:
-            getWelcomeText(
-              name
-            ).replace(
+            welcomeText.replace(
               `@${name}`,
               name
             )
@@ -3935,13 +4244,6 @@ async function startBot() {
 
               /* =========================================
                  MODERATION
-                 
-                 Admin/Owner বাদ দিয়ে
-                 Bad Word / Link check হবে।
-                 
-                 Message moderation হলে
-                 নিচের Command processing
-                 আর চলবে না।
               ========================================= */
 
               const moderated =
@@ -3959,21 +4261,9 @@ async function startBot() {
                 continue;
               }
 
-              /*
-               * =================================================
-               * "/" বাধ্যতামূলক
-               *
-               * menu       ❌
-               * admin      ❌
-               * rules      ❌
-               * ডিল        ❌
-               *
-               * /menu      ✅
-               * /admin     ✅
-               * /rules     ✅
-               * /ডিল       ✅
-               * =================================================
-               */
+              /* =========================================
+                 "/" বাধ্যতামূলক
+              ========================================= */
 
               const trimmedText =
                 text.trim();
@@ -4170,6 +4460,12 @@ async function startBot() {
 
                 setModerationStatus(
                   remoteJid,
+                  "spam",
+                  true
+                );
+
+                setModerationStatus(
+                  remoteJid,
                   "warnings",
                   true
                 );
@@ -4184,7 +4480,11 @@ async function startBot() {
 
 🟢 Bad Word Filter: ON
 🟢 Link Protection: ON
+🟢 Duplicate Spam: ON
 🟢 Warning System: ON
+
+📌 Same Message ১ মিনিটের
+মধ্যে পুনরায় পাঠালে Spam হবে।
 
 🚫 Member Remove: OFF
 🚫 Kick/Ban: OFF
@@ -4218,6 +4518,12 @@ async function startBot() {
 
                 setModerationStatus(
                   remoteJid,
+                  "spam",
+                  false
+                );
+
+                setModerationStatus(
+                  remoteJid,
                   "warnings",
                   false
                 );
@@ -4232,6 +4538,7 @@ async function startBot() {
 
 🔴 Bad Word Filter: OFF
 🔴 Link Protection: OFF
+🔴 Duplicate Spam: OFF
 🔴 Warning System: OFF
 
 🚫 Member Remove: OFF
@@ -4760,6 +5067,12 @@ ${COMMAND_DEFINITIONS
 
 🔗 *Link Protection:* ${
                       moderation.links
+                        ? "🟢 ON"
+                        : "🔴 OFF"
+                    }
+
+🚨 *Duplicate Spam:* ${
+                      moderation.spam
                         ? "🟢 ON"
                         : "🔴 OFF"
                     }
