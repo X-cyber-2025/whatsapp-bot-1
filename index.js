@@ -19,19 +19,24 @@ dotenv.config();
 ========================================================= */
 
 const PORT = Number(process.env.PORT || 3000);
-const PHONE_NUMBER = process.env.PHONE_NUMBER || "";
+
+const PHONE_NUMBER =
+    process.env.PHONE_NUMBER ||
+    "";
 
 const WEBSITE_URL =
     process.env.WEBSITE_URL ||
     "https://x-cyber-2025.github.io/X-cyber.web/";
 
-const ALLOWED_GROUPS = (process.env.ALLOWED_GROUPS || "")
-    .split(",")
-    .map(x => x.trim())
-    .filter(Boolean);
+const ALLOWED_GROUPS =
+    (process.env.ALLOWED_GROUPS || "")
+        .split(",")
+        .map(x => x.trim())
+        .filter(Boolean);
 
 const OPENAI_API_KEY =
-    process.env.OPENAI_API_KEY || "";
+    process.env.OPENAI_API_KEY ||
+    "";
 
 const IMAGE_MODERATION_ENABLED =
     String(
@@ -52,20 +57,38 @@ const IMAGE_SEXUAL_SCORE_THRESHOLD =
    PATHS
 ========================================================= */
 
-const AUTH_DIR = "./auth_info";
-const DATA_DIR = "./data";
+const AUTH_DIR =
+    "./auth_info";
+
+const DATA_DIR =
+    "./data";
 
 const BLACKLIST_FILE =
-    path.join(DATA_DIR, "blacklist.json");
+    path.join(
+        DATA_DIR,
+        "blacklist.json"
+    );
 
 const STATUS_FILE =
-    path.join(DATA_DIR, "bot_status.json");
+    path.join(
+        DATA_DIR,
+        "bot_status.json"
+    );
 
 const REPORT_FILE =
-    path.join(DATA_DIR, "reports.json");
+    path.join(
+        DATA_DIR,
+        "reports.json"
+    );
 
 const WELCOME_FILE =
-    path.join(DATA_DIR, "welcome_status.json");
+    path.join(
+        DATA_DIR,
+        "welcome_status.json"
+    );
+
+const PAIRING_FILE =
+    "./pairing_number.txt";
 
 fs.mkdirSync(
     DATA_DIR,
@@ -271,15 +294,11 @@ function sameUser(
     const bp =
         jidToPhone(bb);
 
-    if (
+    return Boolean(
         ap &&
         bp &&
         ap === bp
-    ) {
-        return true;
-    }
-
-    return false;
+    );
 }
 
 function getBotJid(
@@ -333,6 +352,201 @@ function sleep(
                 ms
             )
     );
+}
+
+/* =========================================================
+   PAIRING NUMBER
+========================================================= */
+
+function getPairingNumber() {
+
+    let number =
+        normalizePhone(
+            PHONE_NUMBER
+        );
+
+    if (number) {
+        return number;
+    }
+
+    try {
+
+        if (
+            fs.existsSync(
+                PAIRING_FILE
+            )
+        ) {
+
+            const content =
+                fs.readFileSync(
+                    PAIRING_FILE,
+                    "utf8"
+                );
+
+            const match =
+                content.match(
+                    /(?:phone|number|নম্বর)?\s*:?\s*(\+?\d{8,15})/i
+                );
+
+            if (match) {
+
+                return normalizePhone(
+                    match[1]
+                );
+            }
+
+            const digits =
+                normalizePhone(
+                    content
+                );
+
+            if (
+                digits.length >= 8 &&
+                digits.length <= 15
+            ) {
+
+                return digits;
+            }
+        }
+
+    } catch (err) {
+
+        console.log(
+            "PAIRING NUMBER READ ERROR:",
+            err.message
+        );
+    }
+
+    return "";
+}
+
+/* =========================================================
+   PAIRING CODE SYSTEM
+========================================================= */
+
+async function createPairingCode(
+    sock,
+    state
+) {
+
+    if (
+        state.creds.registered
+    ) {
+
+        console.log(
+            "🔐 WhatsApp session already registered."
+        );
+
+        return;
+    }
+
+    const phone =
+        getPairingNumber();
+
+    if (!phone) {
+
+        console.log(
+            "❌ Pairing Code তৈরি করা যাচ্ছে না।"
+        );
+
+        console.log(
+            "❌ .env-এ PHONE_NUMBER দিন।"
+        );
+
+        console.log(
+            "Example: PHONE_NUMBER=8801XXXXXXXXX"
+        );
+
+        return;
+    }
+
+    console.log(
+        `📱 Pairing number: ${phone}`
+    );
+
+    try {
+
+        await sleep(3000);
+
+        if (
+            state.creds.registered
+        ) {
+
+            return;
+        }
+
+        const code =
+            await sock.requestPairingCode(
+                phone
+            );
+
+        const formattedCode =
+            String(code)
+                .match(/.{1,4}/g)
+                ?.join("-") ||
+            String(code);
+
+        console.log(
+            ""
+        );
+
+        console.log(
+            "╔════════════════════════════╗"
+        );
+
+        console.log(
+            "║     🔐 WHATSAPP PAIRING    ║"
+        );
+
+        console.log(
+            "╠════════════════════════════╣"
+        );
+
+        console.log(
+            `║ CODE: ${formattedCode}`
+        );
+
+        console.log(
+            `║ NUMBER: ${phone}`
+        );
+
+        console.log(
+            "╚════════════════════════════╝"
+        );
+
+        console.log(
+            ""
+        );
+
+        fs.writeFileSync(
+            PAIRING_FILE,
+            [
+                `Phone: ${phone}`,
+                `Pairing Code: ${formattedCode}`,
+                `Created: ${new Date().toISOString()}`,
+                ""
+            ].join("\n")
+        );
+
+        console.log(
+            "💾 Pairing code saved to pairing_number.txt"
+        );
+
+        console.log(
+            "📱 WhatsApp > Linked Devices > Link a Device > Link with phone number"
+        );
+
+    } catch (err) {
+
+        console.log(
+            "❌ Pairing Code Error:",
+            err.message
+        );
+
+        console.log(
+            "🔄 আবার Server Restart করে চেষ্টা করুন।"
+        );
+    }
 }
 
 /* =========================================================
@@ -656,14 +870,6 @@ function identitiesMatch(
             }
 
             if (x === y) {
-                return true;
-            }
-
-            if (
-                /^[0-9]+$/.test(x) &&
-                /^[0-9]+$/.test(y) &&
-                x === y
-            ) {
                 return true;
             }
 
@@ -1133,12 +1339,19 @@ const BAD_WORDS = [
     "সালা",
     "শালা",
     "শালার",
+    "শালি",
+    "শালী",
+    "সালি",
+    "সালী",
     "খানকি",
     "খানকির",
     "খানকী",
+    "খাংকি",
+    "খাংকী",
     "মাগি",
     "মাগী",
     "বেশ্যা",
+    "বেসসা",
     "হারামি",
     "হারামজাদা",
     "হারামজাদি",
@@ -1223,15 +1436,11 @@ function isDuplicateSpam(
         now
     );
 
-    if (
+    return Boolean(
         old &&
         now - old <=
         5 * 60 * 1000
-    ) {
-        return true;
-    }
-
-    return false;
+    );
 }
 
 /* =========================================================
@@ -1241,15 +1450,11 @@ function isDuplicateSpam(
 async function moderateTextWithOpenAI(
     text
 ) {
-    if (!OPENAI_API_KEY) {
-        return false;
-    }
-
-    if (!text) {
-        return false;
-    }
-
-    if (!TEXT_MODERATION_ENABLED) {
+    if (
+        !OPENAI_API_KEY ||
+        !text ||
+        !TEXT_MODERATION_ENABLED
+    ) {
         return false;
     }
 
@@ -1318,11 +1523,10 @@ async function moderateImageWithOpenAI(
     sock,
     message
 ) {
-    if (!OPENAI_API_KEY) {
-        return false;
-    }
-
-    if (!IMAGE_MODERATION_ENABLED) {
+    if (
+        !OPENAI_API_KEY ||
+        !IMAGE_MODERATION_ENABLED
+    ) {
         return false;
     }
 
@@ -1974,7 +2178,6 @@ function getReportsText(
 
 /* =========================================================
    WELCOME
-   DYNAMIC GROUP NAME
 ========================================================= */
 
 async function sendWelcome(
@@ -1992,7 +2195,6 @@ async function sendWelcome(
 
     try {
 
-        /* Get current group name */
         let groupName =
             "আমাদের গ্রুপ";
 
@@ -2203,12 +2405,7 @@ async function handleParticipantUpdate(
     } = update;
 
     if (
-        !isGroupJid(groupId)
-    ) {
-        return;
-    }
-
-    if (
+        !isGroupJid(groupId) ||
         !isAllowedGroup(groupId)
     ) {
         return;
@@ -2226,10 +2423,6 @@ async function handleParticipantUpdate(
         `📱 AUTHOR PN: ${authorPn || "NONE"}`
     );
 
-    /* =====================================================
-       CACHE PARTICIPANTS
-    ===================================================== */
-
     for (
         const participant of
         participants
@@ -2245,10 +2438,6 @@ async function handleParticipantUpdate(
             identity
         );
     }
-
-    /* =====================================================
-       ADD
-    ===================================================== */
 
     if (
         action === "add"
@@ -2295,10 +2484,6 @@ async function handleParticipantUpdate(
 
         return;
     }
-
-    /* =====================================================
-       REMOVE
-    ===================================================== */
 
     if (
         action === "remove"
@@ -2350,8 +2535,6 @@ async function handleParticipantUpdate(
             let authorIsParticipant =
                 false;
 
-            /* JID comparison */
-
             if (
                 authorIdentity.jid &&
                 participantJid &&
@@ -2364,8 +2547,6 @@ async function handleParticipantUpdate(
                 authorIsParticipant =
                     true;
             }
-
-            /* LID comparison */
 
             if (
                 !authorIsParticipant &&
@@ -2383,8 +2564,6 @@ async function handleParticipantUpdate(
                     true;
             }
 
-            /* Phone comparison */
-
             if (
                 !authorIsParticipant &&
                 authorIdentity.phone &&
@@ -2401,8 +2580,6 @@ async function handleParticipantUpdate(
                     true;
             }
 
-            /* authorPn comparison */
-
             if (
                 !authorIsParticipant &&
                 authorPn &&
@@ -2418,10 +2595,6 @@ async function handleParticipantUpdate(
                 authorIsParticipant =
                     true;
             }
-
-            /* =================================================
-               BOT REMOVAL CHECK
-            ================================================= */
 
             let authorIsBot =
                 false;
@@ -2475,11 +2648,6 @@ async function handleParticipantUpdate(
                 `🔎 REMOVE CHECK | participant=${participantJid} | author=${author || "NONE"} | authorPn=${authorPn || "NONE"} | self=${authorIsParticipant} | bot=${authorIsBot}`
             );
 
-            /* =================================================
-               BOT REMOVED
-               NO BLACKLIST
-            ================================================= */
-
             if (
                 authorIsBot
             ) {
@@ -2490,11 +2658,6 @@ async function handleParticipantUpdate(
 
                 continue;
             }
-
-            /* =================================================
-               ADMIN / OTHER PERSON REMOVED
-               NO BLACKLIST
-            ================================================= */
 
             if (
                 author &&
@@ -2507,10 +2670,6 @@ async function handleParticipantUpdate(
 
                 continue;
             }
-
-            /* =================================================
-               SELF LEAVE
-            ================================================= */
 
             if (
                 authorIsParticipant
@@ -2538,10 +2697,6 @@ async function handleParticipantUpdate(
 
                 continue;
             }
-
-            /* =================================================
-               NO AUTHOR
-            ================================================= */
 
             if (!author) {
 
@@ -2633,10 +2788,6 @@ async function handleCommand(
             groupId,
             sender
         );
-
-    /* =====================================================
-       PUBLIC
-    ===================================================== */
 
     if (
         command === "/menu" ||
@@ -2832,10 +2983,6 @@ async function handleCommand(
         return;
     }
 
-    /* =====================================================
-       REPORT
-    ===================================================== */
-
     if (
         command === "/report"
     ) {
@@ -2919,10 +3066,6 @@ async function handleCommand(
         return;
     }
 
-    /* =====================================================
-       ADMIN PANEL
-    ===================================================== */
-
     if (
         command === "/adminpanel"
     ) {
@@ -2974,10 +3117,6 @@ async function handleCommand(
 
         return;
     }
-
-    /* =====================================================
-       BOT ON/OFF
-    ===================================================== */
 
     if (
         command === "/on" ||
@@ -3109,10 +3248,6 @@ ${IMAGE_MODERATION_ENABLED ? "🟢 ON" : "🔴 OFF"}
         return;
     }
 
-    /* =====================================================
-       WELCOME ON/OFF
-    ===================================================== */
-
     if (
         command === "/welcomeon"
     ) {
@@ -3174,10 +3309,6 @@ ${IMAGE_MODERATION_ENABLED ? "🟢 ON" : "🔴 OFF"}
 
         return;
     }
-
-    /* =====================================================
-       ALLOW BACK / UNLEAVE
-    ===================================================== */
 
     if (
         command === "/allowback" ||
@@ -3270,12 +3401,7 @@ async function handleIncomingMessage(
             message.key?.remoteJid;
 
         if (
-            !isGroupJid(groupId)
-        ) {
-            return;
-        }
-
-        if (
+            !isGroupJid(groupId) ||
             !isAllowedGroup(groupId)
         ) {
             return;
@@ -3338,10 +3464,6 @@ async function handleIncomingMessage(
             );
         }
 
-        /* =================================================
-           COMMANDS
-        ================================================= */
-
         if (
             text.startsWith("/") &&
             isBotEnabled(groupId)
@@ -3357,10 +3479,6 @@ async function handleIncomingMessage(
 
             return;
         }
-
-        /* =================================================
-           ADMIN COMMANDS WHEN BOT OFF
-        ================================================= */
 
         if (
             text.startsWith("/") &&
@@ -3409,10 +3527,6 @@ async function handleIncomingMessage(
             return;
         }
 
-        /* =================================================
-           BOT OFF
-        ================================================= */
-
         if (
             !isBotEnabled(
                 groupId
@@ -3421,19 +3535,11 @@ async function handleIncomingMessage(
             return;
         }
 
-        /* =================================================
-           ADMIN BYPASS
-        ================================================= */
-
         if (
             senderIsAdmin
         ) {
             return;
         }
-
-        /* =================================================
-           BAD WORD
-        ================================================= */
 
         if (
             TEXT_MODERATION_ENABLED &&
@@ -3456,10 +3562,6 @@ async function handleIncomingMessage(
             return;
         }
 
-        /* =================================================
-           LINK
-        ================================================= */
-
         if (
             containsLink(text)
         ) {
@@ -3479,10 +3581,6 @@ async function handleIncomingMessage(
 
             return;
         }
-
-        /* =================================================
-           DUPLICATE SPAM
-        ================================================= */
 
         if (
             isDuplicateSpam(
@@ -3507,10 +3605,6 @@ async function handleIncomingMessage(
 
             return;
         }
-
-        /* =================================================
-           OPENAI TEXT
-        ================================================= */
 
         if (
             OPENAI_API_KEY &&
@@ -3541,10 +3635,6 @@ async function handleIncomingMessage(
                 return;
             }
         }
-
-        /* =================================================
-           OPENAI IMAGE
-        ================================================= */
 
         const imageMessage =
             message.message
@@ -3644,253 +3734,415 @@ server.listen(
 let reconnecting =
     false;
 
+let pairingStarted =
+    false;
+
 async function startBot() {
 
-    const {
-        state,
-        saveCreds
-    } =
-        await useMultiFileAuthState(
-            AUTH_DIR
+    try {
+
+        const {
+            state,
+            saveCreds
+        } =
+            await useMultiFileAuthState(
+                AUTH_DIR
+            );
+
+        const {
+            version
+        } =
+            await fetchLatestBaileysVersion();
+
+        console.log(
+            `📱 Using Baileys version: ${version.join(".")}`
         );
 
-    const {
-        version
-    } =
-        await fetchLatestBaileysVersion();
+        console.log(
+            "🚀 WhatsApp Bot Starting..."
+        );
 
-    console.log(
-        `📱 Using Baileys version: ${version.join(".")}`
-    );
+        console.log(
+            "🔄 Connecting to WhatsApp..."
+        );
 
-    console.log(
-        "🚀 WhatsApp Bot Starting..."
-    );
+        const sock =
+            makeWASocket({
+                version,
 
-    console.log(
-        "🔄 Connecting to WhatsApp..."
-    );
+                auth:
+                    state,
 
-    const sock =
-        makeWASocket({
-            version,
+                logger:
+                    P({
+                        level:
+                            "silent"
+                    }),
 
-            auth:
-                state,
+                printQRInTerminal:
+                    false,
 
-            logger:
-                P({
-                    level:
-                        "silent"
-                }),
+                browser: [
+                    "PIYAS BOT",
+                    "Chrome",
+                    "1.0.0"
+                ],
 
-            printQRInTerminal:
-                false,
+                generateHighQualityLinkPreview:
+                    false,
 
-            browser: [
-                "PIYAS BOT",
-                "Chrome",
-                "1.0.0"
-            ],
+                syncFullHistory:
+                    false,
 
-            generateHighQualityLinkPreview:
-                false,
+                markOnlineOnConnect:
+                    false
+            });
 
-            syncFullHistory:
-                false,
+        /* =================================================
+           CREDS
+        ================================================= */
 
-            markOnlineOnConnect:
-                false
-        });
+        sock.ev.on(
+            "creds.update",
+            saveCreds
+        );
 
-    /* =====================================================
-       CREDS
-    ===================================================== */
+        /* =================================================
+           PAIRING CODE
+        ================================================= */
 
-    sock.ev.on(
-        "creds.update",
-        saveCreds
-    );
+        if (
+            !state.creds.registered &&
+            !pairingStarted
+        ) {
 
-    /* =====================================================
-       CONNECTION
-    ===================================================== */
+            pairingStarted =
+                true;
 
-    sock.ev.on(
-        "connection.update",
-        async ({
-            connection,
-            lastDisconnect
-        }) => {
+            createPairingCode(
+                sock,
+                state
+            ).catch(
+                err => {
 
-            if (
-                connection === "open"
-            ) {
+                    pairingStarted =
+                        false;
 
-                reconnecting =
-                    false;
+                    console.log(
+                        "❌ Pairing system error:",
+                        err.message
+                    );
+                }
+            );
+        }
 
-                console.log(
-                    "✅ WhatsApp Bot Connected Successfully!"
-                );
+        /* =================================================
+           CONNECTION
+        ================================================= */
+
+        sock.ev.on(
+            "connection.update",
+            async ({
+                connection,
+                lastDisconnect
+            }) => {
+
+                if (
+                    connection === "open"
+                ) {
+
+                    reconnecting =
+                        false;
+
+                    pairingStarted =
+                        false;
+
+                    console.log(
+                        ""
+                    );
+
+                    console.log(
+                        "╔════════════════════════════╗"
+                    );
+
+                    console.log(
+                        "║  ✅ WHATSAPP CONNECTED     ║"
+                    );
+
+                    console.log(
+                        "╚════════════════════════════╝"
+                    );
+
+                    console.log(
+                        ""
+                    );
+
+                    try {
+
+                        const groups =
+                            await sock.groupFetchAllParticipating();
+
+                        for (
+                            const groupId of
+                            Object.keys(groups)
+                        ) {
+
+                            if (
+                                isAllowedGroup(
+                                    groupId
+                                )
+                            {
+
+                                await loadGroupParticipants(
+                                    sock,
+                                    groupId
+                                );
+                            }
+                        }
+
+                    } catch (err) {
+
+                        console.log(
+                            "Group cache load error:",
+                            err.message
+                        );
+                    }
+                }
+
+                if (
+                    connection === "close"
+                ) {
+
+                    const statusCode =
+                        new Boom(
+                            lastDisconnect?.error
+                        )?.output
+                            ?.statusCode;
+
+                    const shouldReconnect =
+                        statusCode !==
+                        DisconnectReason.loggedOut;
+
+                    console.log(
+                        `❌ WhatsApp disconnected. Code: ${statusCode || "UNKNOWN"} | Reconnect: ${shouldReconnect}`
+                    );
+
+                    if (
+                        shouldReconnect &&
+                        !reconnecting
+                    ) {
+
+                        reconnecting =
+                            true;
+
+                        pairingStarted =
+                            false;
+
+                        setTimeout(
+                            () => {
+
+                                startBot().catch(
+                                    err => {
+
+                                        console.log(
+                                            "❌ RECONNECT ERROR:",
+                                            err.message
+                                        );
+
+                                        reconnecting =
+                                            false;
+                                    }
+                                );
+
+                            },
+                            3000
+                        );
+
+                    } else if (
+                        !shouldReconnect
+                    ) {
+
+                        console.log(
+                            "❌ WhatsApp session logged out."
+                        );
+
+                        console.log(
+                            "🧹 Removing old auth_info..."
+                        );
+
+                        try {
+
+                            if (
+                                fs.existsSync(
+                                    AUTH_DIR
+                                )
+                            ) {
+
+                                fs.rmSync(
+                                    AUTH_DIR,
+                                    {
+                                        recursive:
+                                            true,
+                                        force:
+                                            true
+                                    }
+                                );
+                            }
+
+                            console.log(
+                                "✅ Old session removed."
+                            );
+
+                        } catch (err) {
+
+                            console.log(
+                                "❌ Failed to remove auth_info:",
+                                err.message
+                            );
+                        }
+
+                        pairingStarted =
+                            false;
+
+                        reconnecting =
+                            true;
+
+                        console.log(
+                            "🔐 Starting fresh Pairing Code login..."
+                        );
+
+                        setTimeout(
+                            () => {
+
+                                startBot().catch(
+                                    err => {
+
+                                        console.log(
+                                            "❌ FRESH LOGIN ERROR:",
+                                            err.message
+                                        );
+
+                                        reconnecting =
+                                            false;
+                                    }
+                                );
+
+                            },
+                            3000
+                        );
+                    }
+                }
+            }
+        );
+
+        /* =================================================
+           PARTICIPANT UPDATE
+        ================================================= */
+
+        sock.ev.on(
+            "group-participants.update",
+            async update => {
 
                 try {
 
-                    const groups =
-                        await sock.groupFetchAllParticipating();
-
-                    for (
-                        const groupId of
-                        Object.keys(groups)
-                    ) {
-
-                        if (
-                            isAllowedGroup(
-                                groupId
-                            )
-                        ) {
-
-                            await loadGroupParticipants(
-                                sock,
-                                groupId
-                            );
-                        }
-                    }
+                    await handleParticipantUpdate(
+                        sock,
+                        update
+                    );
 
                 } catch (err) {
 
                     console.log(
-                        "Group cache load error:",
+                        "GROUP UPDATE ERROR:",
                         err.message
                     );
                 }
             }
+        );
 
-            if (
-                connection === "close"
-            ) {
+        /* =================================================
+           MESSAGES
+        ================================================= */
 
-                const statusCode =
-                    new Boom(
-                        lastDisconnect?.error
-                    )?.output
-                        ?.statusCode;
-
-                const shouldReconnect =
-                    statusCode !==
-                    DisconnectReason.loggedOut;
-
-                console.log(
-                    `❌ WhatsApp disconnected. Reconnect: ${shouldReconnect}`
-                );
-
-                if (
-                    shouldReconnect &&
-                    !reconnecting
-                ) {
-
-                    reconnecting =
-                        true;
-
-                    setTimeout(
-                        () => {
-                            startBot();
-                        },
-                        3000
-                    );
-
-                } else if (
-                    !shouldReconnect
-                ) {
-
-                    console.log(
-                        "❌ Logged out. Please login again."
-                    );
-                }
-            }
-        }
-    );
-
-    /* =====================================================
-       PARTICIPANT UPDATE
-    ===================================================== */
-
-    sock.ev.on(
-        "group-participants.update",
-        async update => {
-
-            try {
-
-                await handleParticipantUpdate(
-                    sock,
-                    update
-                );
-
-            } catch (err) {
-
-                console.log(
-                    "GROUP UPDATE ERROR:",
-                    err.message
-                );
-            }
-        }
-    );
-
-    /* =====================================================
-       MESSAGES
-    ===================================================== */
-
-    sock.ev.on(
-        "messages.upsert",
-        async ({
-            messages
-        }) => {
-
-            for (
-                const message of
+        sock.ev.on(
+            "messages.upsert",
+            async ({
                 messages
-            ) {
+            }) => {
 
-                if (
-                    message.key?.fromMe
-                ) {
-                    continue;
-                }
-
-                await handleIncomingMessage(
-                    sock,
-                    message
-                );
-            }
-        }
-    );
-
-    /* =====================================================
-       GROUP SUBJECT UPDATE
-    ===================================================== */
-
-    sock.ev.on(
-        "groups.update",
-        updates => {
-
-            for (
-                const update of
-                updates
-            ) {
-
-                if (
-                    update.subject
+                for (
+                    const message of
+                    messages
                 ) {
 
-                    console.log(
-                        `📝 Group name updated: ${update.subject}`
+                    if (
+                        message.key?.fromMe
+                    ) {
+                        continue;
+                    }
+
+                    await handleIncomingMessage(
+                        sock,
+                        message
                     );
                 }
             }
-        }
-    );
+        );
 
-    return sock;
+        /* =================================================
+           GROUP SUBJECT UPDATE
+        ================================================= */
+
+        sock.ev.on(
+            "groups.update",
+            updates => {
+
+                for (
+                    const update of
+                    updates
+                ) {
+
+                    if (
+                        update.subject
+                    ) {
+
+                        console.log(
+                            `📝 Group name updated: ${update.subject}`
+                        );
+                    }
+                }
+            }
+        );
+
+        return sock;
+
+    } catch (err) {
+
+        console.log(
+            "❌ START BOT ERROR:",
+            err.message
+        );
+
+        reconnecting =
+            false;
+
+        setTimeout(
+            () => {
+
+                startBot().catch(
+                    error => {
+
+                        console.log(
+                            "❌ RETRY ERROR:",
+                            error.message
+                        );
+                    }
+                );
+
+            },
+            5000
+        );
+    }
 }
 
 /* =========================================================
@@ -3938,8 +4190,7 @@ process.on(
     () => {
 
         console.log(
-            "🛑 Bot shutting down..."
-        );
+            "🛑 Bot shutting down...");
 
         server.close();
 
