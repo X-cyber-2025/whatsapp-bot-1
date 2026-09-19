@@ -1924,44 +1924,80 @@ function getMessageText(message) {
 }
 
 /* =========================================================
-   MENU / INFO TEXT
+   PREMIUM BOT MENU
 ========================================================= */
 
 function buildMenuText(groupId) {
-  const line = (key, command) =>
+  const line = (key, command, description) =>
     isCommandEnabled(groupId, key)
-      ? `│ 🟢 ${command}`
-      : `│ 🔴 ${command} OFF`;
+      ? `┃ ${command}\n┃    └─ ${description}`
+      : `┃ 🔴 ${command} OFF\n┃    └─ ${description}`;
 
   return `
-╭━━━━━━━━━━━━━━━━━━━━╮
-        🤖 *BOT MENU*
-╰━━━━━━━━━━━━━━━━━━━━╯
+╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮
+┃                              ┃
+┃       🤖 *AR-RAIYAN*         ┃
+┃        ✦ *BOT MENU* ✦        ┃
+┃                              ┃
+┃   ⚡ Fast • Smart • Secure   ┃
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
 
-👥 *GROUP COMMANDS*
-${line("menu", "/menu")}
-${line("bot", "/bot")}
-${line("rules", "/rules")}
-${line("admin", "/admin")}
-${line("members", "/members")}
-${line("groupinfo", "/groupinfo")}
-${line("id", "/id")}
+╭━━━〔 👥 *GROUP COMMANDS* 〕━━━╮
+┃
+${line("menu", "/menu", "📋 Open Main Menu")}
+┃
+${line("bot", "/bot", "🤖 Bot Menu")}
+┃
+${line("rules", "/rules", "📜 View Group Rules")}
+┃
+${line("admin", "/admin", "👑 Admin List")}
+┃
+${line("members", "/members", "👥 Group Members")}
+┃
+${line("groupinfo", "/groupinfo", "📊 Group Information")}
+┃
+${line("id", "/id", "🆔 Group ID")}
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
 
-⚙️ *UTILITY*
-${line("ping", "/ping")}
+╭━━━〔 ⚡ *UTILITY* 〕━━━╮
+┃
+${line("ping", "/ping", "🏓 Check Bot Response")}
+╰━━━━━━━━━━━━━━━━━━━━━━━╯
 
-💰 *DEAL*
-${line("deal", "/deal")}
-│ 🟢 /ডিল
+╭━━━〔 💰 *BUY • SELL* 〕━━━╮
+┃
+${line("deal", "/deal", "💸 Buy / Sell Deal")}
+┃
+┃ 🔹 /ডিল
+┃    └─ 💸 Buy / Sell Deal
+╰━━━━━━━━━━━━━━━━━━━━━━━━╯
 
-🤍 *PIYAS*
-${line("piyas", "/piyas")}
+╭━━━〔 🤍 *PIYAS SERVICES* 〕━━━╮
+┃
+${line("piyas", "/piyas", "🤍 Piyas Services")}
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
 
-🌐 *WEBSITE*
-${line("website", "/website")}
+╭━━━〔 🌐 *OFFICIAL WEBSITE* 〕━━━╮
+┃
+${line("website", "/website", "🔗 Visit Our Website")}
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
 
-━━━━━━━━━━━━━━━━━━━━
-📌 সব Command-এর আগে "/" ব্যবহার করতে হবে।
+╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮
+┃          📌 *NOTE*            ┃
+┃                              ┃
+┃  সব Command-এর আগে \`/\`       ┃
+┃  ব্যবহার করতে হবে।            ┃
+┃                              ┃
+┃  💡 Example: \`/menu\`         ┃
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     🟢 *BOT STATUS : ONLINE*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+          🤖 *AR-RAIYAN*
+     ⚡ *Powered by Piyas*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
 }
 
@@ -3360,7 +3396,7 @@ async function startBot() {
             }
 
             /* =============================================
-               MENU
+               PREMIUM MENU
             ============================================= */
 
             if (
