@@ -630,9 +630,6 @@ async function moderateMessage(
     const sender =
       message?.key?.participant;
 
-    /*
-     * Sender Admin হলে moderation skip করবে।
-     */
     if (sender) {
       const admin =
         await isSenderAdmin(
@@ -644,10 +641,6 @@ async function moderateMessage(
         return false;
       }
     }
-
-    /* =============================================
-       BAD WORD FILTER
-    ============================================= */
 
     if (
       isModerationEnabled(
@@ -712,10 +705,6 @@ async function moderateMessage(
       }
     }
 
-    /* =============================================
-       LINK PROTECTION
-    ============================================= */
-
     if (
       isModerationEnabled(
         remoteJid,
@@ -765,13 +754,6 @@ async function moderateMessage(
 
       return true;
     }
-
-    /* =============================================
-       DUPLICATE SPAM PROTECTION
-
-       Same member + same message
-       within 1 minute = SPAM
-    ============================================= */
 
     if (
       isModerationEnabled(
@@ -1290,6 +1272,237 @@ function setCommandStatus(
 }
 
 /* =========================================================
+   GROUP OFF DURATION PARSER
+========================================================= */
+
+function parseGroupOffDuration(args = []) {
+  let totalMinutes = 0;
+  let hasNumber = false;
+
+  const units = {
+    year: 525600,
+    years: 525600,
+    yr: 525600,
+    yrs: 525600,
+    বছর: 525600,
+    বছরের: 525600,
+
+    month: 43200,
+    months: 43200,
+    মাস: 43200,
+    মাসের: 43200,
+
+    week: 10080,
+    weeks: 10080,
+    সপ্তাহ: 10080,
+    সপ্তাহের: 10080,
+
+    day: 1440,
+    days: 1440,
+    দিন: 1440,
+    দিনের: 1440,
+
+    hour: 60,
+    hours: 60,
+    hr: 60,
+    hrs: 60,
+    ঘন্টা: 60,
+    ঘণ্টা: 60,
+    ঘন্টার: 60,
+    ঘণ্টার: 60,
+
+    minute: 1,
+    minutes: 1,
+    min: 1,
+    mins: 1,
+    মিনিট: 1,
+    মিনিটের: 1
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const current =
+      String(args[i] || "")
+        .trim()
+        .toLowerCase();
+
+    if (!current) {
+      continue;
+    }
+
+    const number =
+      Number(
+        current.replace(
+          /,/g,
+          ""
+        )
+      );
+
+    if (
+      !Number.isFinite(number) ||
+      number <= 0
+    ) {
+      continue;
+    }
+
+    hasNumber = true;
+
+    const next =
+      String(args[i + 1] || "")
+        .trim()
+        .toLowerCase();
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        units,
+        next
+      )
+    ) {
+      totalMinutes +=
+        number * units[next];
+
+      i++;
+    } else {
+      /*
+       * Unit না থাকলে number = minutes
+       *
+       * Example:
+       * /গ্রুপ বন্ধ 30
+       *
+       * = 30 minutes
+       */
+      totalMinutes += number;
+    }
+  }
+
+  if (
+    !hasNumber ||
+    !Number.isFinite(totalMinutes) ||
+    totalMinutes <= 0
+  ) {
+    return null;
+  }
+
+  /*
+   * JavaScript timestamp নিরাপদ রাখার জন্য
+   * বাস্তবসম্মত maximum.
+   *
+   * এটি প্রায় কয়েক লক্ষ বছরেরও বেশি,
+   * তাই সাধারণ ব্যবহারে কোনো সীমা অনুভব হবে না।
+   */
+  const maxMinutes =
+    Math.floor(
+      Number.MAX_SAFE_INTEGER /
+      (60 * 1000)
+    );
+
+  if (
+    totalMinutes >
+    maxMinutes
+  ) {
+    return null;
+  }
+
+  return Math.round(
+    totalMinutes
+  );
+}
+
+/* =========================================================
+   FORMAT DURATION
+========================================================= */
+
+function formatGroupDuration(
+  totalMinutes
+) {
+  let minutes =
+    Math.max(
+      0,
+      Math.round(
+        Number(totalMinutes) || 0
+      )
+    );
+
+  const years =
+    Math.floor(
+      minutes / 525600
+    );
+
+  minutes %= 525600;
+
+  const months =
+    Math.floor(
+      minutes / 43200
+    );
+
+  minutes %= 43200;
+
+  const weeks =
+    Math.floor(
+      minutes / 10080
+    );
+
+  minutes %= 10080;
+
+  const days =
+    Math.floor(
+      minutes / 1440
+    );
+
+  minutes %= 1440;
+
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  minutes %= 60;
+
+  const parts = [];
+
+  if (years > 0) {
+    parts.push(
+      `${years} বছর`
+    );
+  }
+
+  if (months > 0) {
+    parts.push(
+      `${months} মাস`
+    );
+  }
+
+  if (weeks > 0) {
+    parts.push(
+      `${weeks} সপ্তাহ`
+    );
+  }
+
+  if (days > 0) {
+    parts.push(
+      `${days} দিন`
+    );
+  }
+
+  if (hours > 0) {
+    parts.push(
+      `${hours} ঘণ্টা`
+    );
+  }
+
+  if (minutes > 0) {
+    parts.push(
+      `${minutes} মিনিট`
+    );
+  }
+
+  return (
+    parts.length
+      ? parts.join(" ")
+      : "0 মিনিট"
+  );
+}
+
+/* =========================================================
    AUTO GROUP ON
 ========================================================= */
 
@@ -1309,6 +1522,19 @@ function setGroupAutoOn(
     return false;
   }
 
+  const milliseconds =
+    numericMinutes *
+    60 *
+    1000;
+
+  if (
+    !Number.isSafeInteger(
+      Math.round(milliseconds)
+    )
+  ) {
+    return false;
+  }
+
   const status =
     getGroupStatus(
       groupId
@@ -1319,7 +1545,7 @@ function setGroupAutoOn(
   status.autoOnAt =
     Date.now() +
     Math.round(
-      numericMinutes * 60 * 1000
+      milliseconds
     );
 
   saveBotStatus();
@@ -1366,6 +1592,25 @@ function getRemainingAutoOnMinutes(
   return Math.ceil(
     remaining /
       (60 * 1000)
+  );
+}
+
+function getRemainingAutoOnText(
+  groupId
+) {
+  const remaining =
+    getRemainingAutoOnMinutes(
+      groupId
+    );
+
+  if (
+    remaining <= 0
+  ) {
+    return "";
+  }
+
+  return formatGroupDuration(
+    remaining
   );
 }
 
@@ -1458,11 +1703,6 @@ ON হয়েছে। ✅
   }
 }
 
-/*
- * প্রতি ১০ সেকেন্ডে check করবে।
- * Server restart হলেও bot_status.json
- * থেকে সময় নিয়ে আবার হিসাব করবে।
- */
 setInterval(
   autoEnableExpiredGroups,
   10 * 1000
@@ -2818,8 +3058,8 @@ async function sendAdminPanel(
         remoteJid
       );
 
-    const remainingMinutes =
-      getRemainingAutoOnMinutes(
+    const remainingText =
+      getRemainingAutoOnText(
         remoteJid
       );
 
@@ -2841,8 +3081,8 @@ async function sendAdminPanel(
     }
 ${
   !isBotEnabled(remoteJid) &&
-  remainingMinutes > 0
-    ? `│ ⏰ Auto ON: ${remainingMinutes} মিনিট পর`
+  remainingText
+    ? `│ ⏰ Auto ON: ${remainingText} পর`
     : ""
 }
 ╰────────────────────
@@ -2899,7 +3139,7 @@ ${commandStatus}
 │ 🟢 /boton
 │ 🔴 /botoff
 │
-│ ⏰ /গ্রুপ বন্ধ <মিনিট>
+│ ⏰ /গ্রুপ বন্ধ <সময়>
 ╰────────────────────
 
 ╭─❖ ⚙️ *COMMAND CONTROL*
@@ -2934,7 +3174,8 @@ ${commandStatus}
         "/adminpanel",
         "/boton",
         "/botoff",
-        "/গ্রুপ বন্ধ 30",
+        "/গ্রুপ বন্ধ 30 মিনিট",
+        "/গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট",
         "/cmdlist",
         "/on admin",
         "/off admin",
@@ -3002,8 +3243,8 @@ async function sendCommandList(
     COMMAND_DEFINITIONS.length -
     onCount;
 
-  const remainingMinutes =
-    getRemainingAutoOnMinutes(
+  const remainingText =
+    getRemainingAutoOnText(
       remoteJid
     );
 
@@ -3032,8 +3273,8 @@ ${
 
 ${
   !isBotEnabled(remoteJid) &&
-  remainingMinutes > 0
-    ? `⏰ Auto ON: ${remainingMinutes} মিনিট পর`
+  remainingText
+    ? `⏰ Auto ON: ${remainingText} পর`
     : ""
 }
 
@@ -3092,10 +3333,14 @@ ${
 Spam হিসেবে Delete হবে।
 
 📌 Group বন্ধ করতে:
-*/গ্রুপ বন্ধ <মিনিট>*
 
-📌 উদাহরণ:
-*/গ্রুপ বন্ধ 30*
+*/গ্রুপ বন্ধ 30 মিনিট*
+*/গ্রুপ বন্ধ 2 ঘণ্টা*
+*/গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট*
+*/গ্রুপ বন্ধ 1 দিন 5 ঘণ্টা 20 মিনিট*
+
+📌 সময়ের কোনো ৩০ দিনের সীমা নেই।
+যত সময় প্রয়োজন তত সময় দিতে পারবেন।
 
 📌 সব Command-এর আগে "/" আবশ্যক।
 
@@ -3114,7 +3359,8 @@ Spam হিসেবে Delete হবে।
     remoteJid,
     [
       "/cmdlist",
-      "/গ্রুপ বন্ধ 30",
+      "/গ্রুপ বন্ধ 30 মিনিট",
+      "/গ্রুপ বন্ধ 2 ঘণ্টা",
       ...COMMAND_DEFINITIONS.map(
         item =>
           item.command
@@ -4575,9 +4821,16 @@ async function startBot() {
 
               /* =============================================
                  GROUP AUTO OFF
-                 
-                 Usage:
+
+                 Examples:
+
                  /গ্রুপ বন্ধ 30
+                 /গ্রুপ বন্ধ 30 মিনিট
+                 /গ্রুপ বন্ধ 2 ঘণ্টা
+                 /গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট
+                 /গ্রুপ বন্ধ 1 দিন
+                 /গ্রুপ বন্ধ 1 দিন 5 ঘণ্টা 20 মিনিট
+                 /গ্রুপ বন্ধ 1 বছর
               ============================================= */
 
               if (
@@ -4588,19 +4841,8 @@ async function startBot() {
                     args[0] || ""
                   );
 
-                const minutesRaw =
-                  args[1] || "";
-
-                const minutes =
-                  Number(
-                    minutesRaw
-                  );
-
                 if (
-                  action !== "বন্ধ" ||
-                  !minutesRaw ||
-                  !Number.isFinite(minutes) ||
-                  minutes <= 0
+                  action !== "বন্ধ"
                 ) {
                   await sock.sendMessage(
                     remoteJid,
@@ -4610,20 +4852,30 @@ async function startBot() {
        🔴 *GROUP OFF*
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-📌 সঠিক Command:
+📌 সঠিক ব্যবহার:
 
-/গ্রুপ বন্ধ <মিনিট>
+/গ্রুপ বন্ধ 30 মিনিট
 
-💡 উদাহরণ:
+/গ্রুপ বন্ধ 2 ঘণ্টা
 
-/গ্রুপ বন্ধ 10
+/গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট
+
+/গ্রুপ বন্ধ 1 দিন
+
+/গ্রুপ বন্ধ 1 দিন 5 ঘণ্টা 20 মিনিট
+
+/গ্রুপ বন্ধ 1 বছর
+
+💡 শুধু সংখ্যা দিলেও হবে:
+
 /গ্রুপ বন্ধ 30
-/গ্রুপ বন্ধ 60
-/গ্রুপ বন্ধ 120
 
-⏰ যত মিনিট লিখবেন,
-তত মিনিট পর বট নিজে থেকেই
-আবার ON হয়ে যাবে।
+➡️ 30 = 30 মিনিট
+
+⏰ সময় শেষ হলে Bot
+নিজে থেকেই আবার ON হবে।
+
+📌 সময়ের কোনো ৩০ দিনের সীমা নেই।
 
 👑 শুধুমাত্র Admin / Owner
 এই Command ব্যবহার করতে পারবেন।
@@ -4633,71 +4885,80 @@ async function startBot() {
 
                   await sendCopyButton(
                     remoteJid,
-                    "/গ্রুপ বন্ধ 30"
+                    "/গ্রুপ বন্ধ 30 মিনিট"
                   );
 
                   continue;
                 }
 
-                if (
-                  minutes > 43200
-                ) {
-                  await sock.sendMessage(
-                    remoteJid,
-                    {
-                      text:
-                        "⚠️ সর্বোচ্চ ৪৩২০০ মিনিট (৩০ দিন) পর্যন্ত সময় দেওয়া যাবে।"
-                    }
+                const duration =
+                  parseGroupOffDuration(
+                    args.slice(1)
                   );
 
-                  continue;
-                }
-
-                const alreadyAutoOn =
-                  getGroupStatus(
-                    remoteJid
-                  ).autoOnAt;
-
                 if (
-                  isBotEnabled(
-                    remoteJid
-                  ) === false &&
-                  typeof alreadyAutoOn ===
-                    "number" &&
-                  alreadyAutoOn > Date.now()
+                  !duration ||
+                  duration <= 0
                 ) {
-                  const remaining =
-                    getRemainingAutoOnMinutes(
-                      remoteJid
-                    );
-
                   await sock.sendMessage(
                     remoteJid,
                     {
                       text: `
-🔴 *GROUP ALREADY OFF*
+╭━━━━━━━━━━━━━━━━━━━━╮
+       ⚠️ *INVALID TIME*
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-এই Group ইতোমধ্যে Auto OFF আছে।
+সঠিক সময় লিখুন।
 
-⏰ Auto ON হতে এখনও প্রায়
-*${remaining} মিনিট* বাকি।
+📌 উদাহরণ:
 
-📌 নতুন সময় দিতে চাইলে একই Command আবার দিন।
+/গ্রুপ বন্ধ 30 মিনিট
+
+/গ্রুপ বন্ধ 2 ঘণ্টা
+
+/গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট
+
+/গ্রুপ বন্ধ 1 দিন
+
+/গ্রুপ বন্ধ 1 দিন 5 ঘণ্টা 20 মিনিট
+
+/গ্রুপ বন্ধ 1 বছর
 `
                     }
                   );
 
-                  /*
-                   * নতুন Command দিলে পুরোনো
-                   * সময় replace করার সুবিধা রাখা হয়েছে।
-                   * তাই এখানে আবার নতুন সময় সেট করা হবে।
-                   */
+                  continue;
                 }
 
-                setGroupAutoOn(
-                  remoteJid,
-                  minutes
-                );
+                const totalMinutes =
+                  duration;
+
+                const durationText =
+                  formatGroupDuration(
+                    totalMinutes
+                  );
+
+                /*
+                 * নতুন সময় দিলে আগের timer
+                 * replace হয়ে যাবে।
+                 */
+                const success =
+                  setGroupAutoOn(
+                    remoteJid,
+                    totalMinutes
+                  );
+
+                if (!success) {
+                  await sock.sendMessage(
+                    remoteJid,
+                    {
+                      text:
+                        "⚠️ এই সময়টি সেট করা সম্ভব হয়নি। একটু ছোট সময় দিয়ে আবার চেষ্টা করুন।"
+                    }
+                  );
+
+                  continue;
+                }
 
                 await sock.sendMessage(
                   remoteJid,
@@ -4707,15 +4968,19 @@ async function startBot() {
        🔴 *GROUP OFF*
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-⏰ এই Group-এর Bot
-*${minutes} মিনিটের জন্য* বন্ধ করা হয়েছে।
+🤖 এই Group-এর Bot
+*${durationText}* এর জন্য বন্ধ করা হয়েছে।
 
-🤖 নির্ধারিত সময় শেষ হলে
-বট নিজে থেকেই আবার ON হবে। ✅
+⏰ *সময়:* ${durationText}
 
-🕐 *Auto ON:* ${minutes} মিনিট পর
+🟢 নির্ধারিত সময় শেষ হলে
+Bot নিজে থেকেই আবার ON হবে। ✅
+
+📌 নতুন সময় দিতে চাইলে
+আবার একই Command ব্যবহার করুন।
 
 👑 Admin / Owner
+
 🤍 *Piyas Bot*
 `
                   }
@@ -5053,10 +5318,6 @@ ${COMMAND_DEFINITIONS
                   continue;
                 }
 
-                /* =========================================
-                   OFF
-                ========================================= */
-
                 if (
                   command ===
                   "off"
@@ -5112,10 +5373,6 @@ ${COMMAND_DEFINITIONS
 
                   continue;
                 }
-
-                /* =========================================
-                   ON
-                ========================================= */
 
                 if (
                   command ===
@@ -5425,8 +5682,8 @@ ${COMMAND_DEFINITIONS
                     remoteJid
                   );
 
-                const remainingMinutes =
-                  getRemainingAutoOnMinutes(
+                const remainingText =
+                  getRemainingAutoOnText(
                     remoteJid
                   );
 
@@ -5467,8 +5724,8 @@ ${COMMAND_DEFINITIONS
 
 ${
   !isBotEnabled(remoteJid) &&
-  remainingMinutes > 0
-    ? `⏰ *Auto ON:* ${remainingMinutes} মিনিট পর`
+  remainingText
+    ? `⏰ *Auto ON:* ${remainingText} পর`
     : ""
 }
 
