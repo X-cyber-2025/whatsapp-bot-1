@@ -3651,43 +3651,43 @@ function parseGroupDuration(
   const patterns = [
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(বছর|বছরের|year|years|yr|yrs|y)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(বছর|বছরের|year|years|yr|yrs|y)(?=\s|$)/giu,
       ms:
         365 * 24 * 60 * 60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(মাস|মাসের|month|months|mo|mos)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(মাস|মাসের|month|months|mo|mos)(?=\s|$)/giu,
       ms:
         30 * 24 * 60 * 60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(সপ্তাহ|সপ্তাহের|week|weeks|wk|wks|w)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(সপ্তাহ|সপ্তাহের|week|weeks|wk|wks|w)(?=\s|$)/giu,
       ms:
         7 * 24 * 60 * 60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(দিন|দিনের|day|days|d)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(দিন|দিনের|day|days|d)(?=\s|$)/giu,
       ms:
         24 * 60 * 60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(ঘণ্টা|ঘন্টা|ঘণ্টার|ঘন্টার|hour|hours|hr|hrs|h)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(ঘণ্টা|ঘন্টা|ঘণ্টার|ঘন্টার|hour|hours|hr|hrs|h)(?=\s|$)/giu,
       ms:
         60 * 60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(মিনিট|মিনিটের|minute|minutes|min|mins|m)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(মিনিট|মিনিটের|minute|minutes|min|mins|m)(?=\s|$)/giu,
       ms:
         60 * 1000
     },
     {
       regex:
-        /(\d+(?:\.\d+)?)\s*(সেকেন্ড|সেকেন্ডের|second|seconds|sec|secs|s)\b/giu,
+        /(\d+(?:\.\d+)?)\s*(সেকেন্ড|সেকেন্ডের|second|seconds|sec|secs|s)(?=\s|$)/giu,
       ms:
         1000
     }
@@ -3928,13 +3928,15 @@ automatically আবার OPEN হবে।
       error?.message
     );
 
-    await sock.sendMessage(
-      remoteJid,
-      {
-        text:
-          "❌ Group বন্ধ করা যায়নি। Bot-এর Admin permission চেক করুন।"
-      }
-    );
+    try {
+      await sock.sendMessage(
+        remoteJid,
+        {
+          text:
+            "❌ Group বন্ধ করা যায়নি। Bot-এর Admin permission চেক করুন।"
+        }
+      );
+    } catch {}
 
     return false;
   }
@@ -4071,7 +4073,8 @@ async function restoreGroupLocks() {
       status
     ] of Object.entries(
       botStatus
-    ) {
+    )
+  ) {
     if (
       !status ||
       typeof status !==
@@ -4611,10 +4614,6 @@ async function startBot() {
                 `👑 Bot Admin Groups: ${adminGroupCount}`
               );
 
-              /*
-               * Timed group locks restore
-               * after restart.
-               */
               await restoreGroupLocks();
 
             } catch (error) {
@@ -4738,9 +4737,6 @@ async function startBot() {
                 continue;
               }
 
-              /*
-               * Moderation
-               */
               const moderated =
                 await moderateMessage(
                   remoteJid,
@@ -4949,10 +4945,6 @@ async function startBot() {
                     remoteJid
                   );
 
-                /*
-                 * Active timed lock থাকলে
-                 * /boton = Group OPEN + Bot ON
-                 */
                 if (
                   typeof status.groupLockedUntil ===
                     "number" &&
