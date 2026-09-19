@@ -945,7 +945,8 @@ const ADMIN_ONLY_COMMANDS = [
   "moderation",
   "modstatus",
   "modon",
-  "modoff"
+  "modoff",
+  "গ্রুপ"
 ];
 
 /* =========================================================
@@ -963,7 +964,8 @@ const PROTECTED_COMMANDS = [
   "moderation",
   "modstatus",
   "modon",
-  "modoff"
+  "modoff",
+  "গ্রুপ"
 ];
 
 /* =========================================================
@@ -997,7 +999,8 @@ function loadBotStatus() {
           disabledCommands: [],
           moderation: {
             ...MODERATION_DEFAULTS
-          }
+          },
+          autoOnAt: null
         };
       }
 
@@ -1010,7 +1013,8 @@ function loadBotStatus() {
           disabledCommands: [],
           moderation: {
             ...MODERATION_DEFAULTS
-          }
+          },
+          autoOnAt: null
         };
       }
 
@@ -1047,6 +1051,16 @@ function loadBotStatus() {
           botStatus[groupId].moderation[key] =
             defaultValue;
         }
+      }
+
+      if (
+        botStatus[groupId].autoOnAt !== null &&
+        (
+          typeof botStatus[groupId].autoOnAt !== "number" ||
+          !Number.isFinite(botStatus[groupId].autoOnAt)
+        )
+      ) {
+        botStatus[groupId].autoOnAt = null;
       }
     }
 
@@ -1087,7 +1101,8 @@ function getGroupStatus(groupId) {
       disabledCommands: [],
       moderation: {
         ...MODERATION_DEFAULTS
-      }
+      },
+      autoOnAt: null
     };
   }
 
@@ -1126,6 +1141,16 @@ function getGroupStatus(groupId) {
     }
   }
 
+  if (
+    botStatus[groupId].autoOnAt !== null &&
+    (
+      typeof botStatus[groupId].autoOnAt !== "number" ||
+      !Number.isFinite(botStatus[groupId].autoOnAt)
+    )
+  ) {
+    botStatus[groupId].autoOnAt = null;
+  }
+
   return botStatus[groupId];
 }
 
@@ -1142,6 +1167,12 @@ function setBotStatus(
   getGroupStatus(
     groupId
   ).enabled = Boolean(enabled);
+
+  if (enabled) {
+    getGroupStatus(
+      groupId
+    ).autoOnAt = null;
+  }
 
   saveBotStatus();
 }
@@ -1257,6 +1288,185 @@ function setCommandStatus(
 
   return true;
 }
+
+/* =========================================================
+   AUTO GROUP ON
+========================================================= */
+
+function setGroupAutoOn(
+  groupId,
+  minutes
+) {
+  const numericMinutes =
+    Number(minutes);
+
+  if (
+    !Number.isFinite(
+      numericMinutes
+    ) ||
+    numericMinutes <= 0
+  ) {
+    return false;
+  }
+
+  const status =
+    getGroupStatus(
+      groupId
+    );
+
+  status.enabled = false;
+
+  status.autoOnAt =
+    Date.now() +
+    Math.round(
+      numericMinutes * 60 * 1000
+    );
+
+  saveBotStatus();
+
+  return true;
+}
+
+function clearGroupAutoOn(
+  groupId
+) {
+  const status =
+    getGroupStatus(
+      groupId
+    );
+
+  status.autoOnAt = null;
+
+  saveBotStatus();
+}
+
+function getRemainingAutoOnMinutes(
+  groupId
+) {
+  const autoOnAt =
+    getGroupStatus(
+      groupId
+    ).autoOnAt;
+
+  if (
+    typeof autoOnAt !== "number" ||
+    !Number.isFinite(autoOnAt)
+  ) {
+    return 0;
+  }
+
+  const remaining =
+    autoOnAt -
+    Date.now();
+
+  if (remaining <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(
+    remaining /
+      (60 * 1000)
+  );
+}
+
+async function autoEnableExpiredGroups() {
+  try {
+    const now =
+      Date.now();
+
+    let changed = false;
+
+    for (
+      const [
+        groupId,
+        status
+      ] of Object.entries(
+        botStatus
+      )
+    ) {
+      if (
+        !status ||
+        typeof status !== "object"
+      ) {
+        continue;
+      }
+
+      const autoOnAt =
+        status.autoOnAt;
+
+      if (
+        typeof autoOnAt !== "number" ||
+        !Number.isFinite(autoOnAt)
+      ) {
+        continue;
+      }
+
+      if (
+        now < autoOnAt
+      ) {
+        continue;
+      }
+
+      status.enabled = true;
+      status.autoOnAt = null;
+
+      changed = true;
+
+      console.log(
+        `🟢 AUTO ON: ${groupId}`
+      );
+
+      if (
+        sock &&
+        groupId.endsWith("@g.us")
+      ) {
+        try {
+          await sock.sendMessage(
+            groupId,
+            {
+              text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🟢 *GROUP ON*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+⏰ নির্ধারিত সময় শেষ হয়েছে।
+
+🤖 বট এখন আবার স্বয়ংক্রিয়ভাবে
+ON হয়েছে। ✅
+
+🤍 *Piyas Bot*
+`
+            }
+          );
+        } catch (error) {
+          console.log(
+            "⚠️ Auto ON message error:",
+            error?.message
+          );
+        }
+      }
+    }
+
+    if (changed) {
+      saveBotStatus();
+    }
+  } catch (error) {
+    console.log(
+      "⚠️ Auto ON checker error:",
+      error?.message
+    );
+  }
+}
+
+/*
+ * প্রতি ১০ সেকেন্ডে check করবে।
+ * Server restart হলেও bot_status.json
+ * থেকে সময় নিয়ে আবার হিসাব করবে।
+ */
+setInterval(
+  autoEnableExpiredGroups,
+  10 * 1000
+);
 
 loadBotStatus();
 loadWarnings();
@@ -2608,6 +2818,11 @@ async function sendAdminPanel(
         remoteJid
       );
 
+    const remainingMinutes =
+      getRemainingAutoOnMinutes(
+        remoteJid
+      );
+
     const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
        👑 *ADMIN PANEL*
@@ -2624,6 +2839,12 @@ async function sendAdminPanel(
         ? "🟢 Bot: ON"
         : "🔴 Bot: OFF"
     }
+${
+  !isBotEnabled(remoteJid) &&
+  remainingMinutes > 0
+    ? `│ ⏰ Auto ON: ${remainingMinutes} মিনিট পর`
+    : ""
+}
 ╰────────────────────
 
 ╭─❖ ⚙️ *COMMAND STATUS*
@@ -2677,6 +2898,8 @@ ${commandStatus}
 │
 │ 🟢 /boton
 │ 🔴 /botoff
+│
+│ ⏰ /গ্রুপ বন্ধ <মিনিট>
 ╰────────────────────
 
 ╭─❖ ⚙️ *COMMAND CONTROL*
@@ -2711,6 +2934,7 @@ ${commandStatus}
         "/adminpanel",
         "/boton",
         "/botoff",
+        "/গ্রুপ বন্ধ 30",
         "/cmdlist",
         "/on admin",
         "/off admin",
@@ -2778,6 +3002,11 @@ async function sendCommandList(
     COMMAND_DEFINITIONS.length -
     onCount;
 
+  const remainingMinutes =
+    getRemainingAutoOnMinutes(
+      remoteJid
+    );
+
   const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
       📋 *COMMAND STATUS*
@@ -2799,6 +3028,13 @@ ${
   )
     ? "🟢 ON"
     : "🔴 OFF"
+}
+
+${
+  !isBotEnabled(remoteJid) &&
+  remainingMinutes > 0
+    ? `⏰ Auto ON: ${remainingMinutes} মিনিট পর`
+    : ""
 }
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2855,6 +3091,12 @@ ${
 ১ মিনিটের মধ্যে পুনরায় পাঠালে
 Spam হিসেবে Delete হবে।
 
+📌 Group বন্ধ করতে:
+*/গ্রুপ বন্ধ <মিনিট>*
+
+📌 উদাহরণ:
+*/গ্রুপ বন্ধ 30*
+
 📌 সব Command-এর আগে "/" আবশ্যক।
 
 👑 শুধুমাত্র Admin ও Owner
@@ -2872,6 +3114,7 @@ Spam হিসেবে Delete হবে।
     remoteJid,
     [
       "/cmdlist",
+      "/গ্রুপ বন্ধ 30",
       ...COMMAND_DEFINITIONS.map(
         item =>
           item.command
@@ -4094,6 +4337,8 @@ async function startBot() {
               console.log(
                 `👑 Bot Admin Groups: ${adminGroupCount}`
               );
+
+              await autoEnableExpiredGroups();
             } catch (error) {
               console.log(
                 "⚠️ Group cache error:",
@@ -4326,6 +4571,162 @@ async function startBot() {
 
                   continue;
                 }
+              }
+
+              /* =============================================
+                 GROUP AUTO OFF
+                 
+                 Usage:
+                 /গ্রুপ বন্ধ 30
+              ============================================= */
+
+              if (
+                command === "গ্রুপ"
+              ) {
+                const action =
+                  normalizeCommandName(
+                    args[0] || ""
+                  );
+
+                const minutesRaw =
+                  args[1] || "";
+
+                const minutes =
+                  Number(
+                    minutesRaw
+                  );
+
+                if (
+                  action !== "বন্ধ" ||
+                  !minutesRaw ||
+                  !Number.isFinite(minutes) ||
+                  minutes <= 0
+                ) {
+                  await sock.sendMessage(
+                    remoteJid,
+                    {
+                      text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🔴 *GROUP OFF*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+📌 সঠিক Command:
+
+/গ্রুপ বন্ধ <মিনিট>
+
+💡 উদাহরণ:
+
+/গ্রুপ বন্ধ 10
+/গ্রুপ বন্ধ 30
+/গ্রুপ বন্ধ 60
+/গ্রুপ বন্ধ 120
+
+⏰ যত মিনিট লিখবেন,
+তত মিনিট পর বট নিজে থেকেই
+আবার ON হয়ে যাবে।
+
+👑 শুধুমাত্র Admin / Owner
+এই Command ব্যবহার করতে পারবেন।
+`
+                    }
+                  );
+
+                  await sendCopyButton(
+                    remoteJid,
+                    "/গ্রুপ বন্ধ 30"
+                  );
+
+                  continue;
+                }
+
+                if (
+                  minutes > 43200
+                ) {
+                  await sock.sendMessage(
+                    remoteJid,
+                    {
+                      text:
+                        "⚠️ সর্বোচ্চ ৪৩২০০ মিনিট (৩০ দিন) পর্যন্ত সময় দেওয়া যাবে।"
+                    }
+                  );
+
+                  continue;
+                }
+
+                const alreadyAutoOn =
+                  getGroupStatus(
+                    remoteJid
+                  ).autoOnAt;
+
+                if (
+                  isBotEnabled(
+                    remoteJid
+                  ) === false &&
+                  typeof alreadyAutoOn ===
+                    "number" &&
+                  alreadyAutoOn > Date.now()
+                ) {
+                  const remaining =
+                    getRemainingAutoOnMinutes(
+                      remoteJid
+                    );
+
+                  await sock.sendMessage(
+                    remoteJid,
+                    {
+                      text: `
+🔴 *GROUP ALREADY OFF*
+
+এই Group ইতোমধ্যে Auto OFF আছে।
+
+⏰ Auto ON হতে এখনও প্রায়
+*${remaining} মিনিট* বাকি।
+
+📌 নতুন সময় দিতে চাইলে একই Command আবার দিন।
+`
+                    }
+                  );
+
+                  /*
+                   * নতুন Command দিলে পুরোনো
+                   * সময় replace করার সুবিধা রাখা হয়েছে।
+                   * তাই এখানে আবার নতুন সময় সেট করা হবে।
+                   */
+                }
+
+                setGroupAutoOn(
+                  remoteJid,
+                  minutes
+                );
+
+                await sock.sendMessage(
+                  remoteJid,
+                  {
+                    text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🔴 *GROUP OFF*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+⏰ এই Group-এর Bot
+*${minutes} মিনিটের জন্য* বন্ধ করা হয়েছে।
+
+🤖 নির্ধারিত সময় শেষ হলে
+বট নিজে থেকেই আবার ON হবে। ✅
+
+🕐 *Auto ON:* ${minutes} মিনিট পর
+
+👑 Admin / Owner
+🤍 *Piyas Bot*
+`
+                  }
+                );
+
+                await sendCopyButton(
+                  remoteJid,
+                  "/boton"
+                );
+
+                continue;
               }
 
               /* =============================================
@@ -5024,6 +5425,11 @@ ${COMMAND_DEFINITIONS
                     remoteJid
                   );
 
+                const remainingMinutes =
+                  getRemainingAutoOnMinutes(
+                    remoteJid
+                  );
+
                 await sock.sendMessage(
                   remoteJid,
                   {
@@ -5058,6 +5464,13 @@ ${COMMAND_DEFINITIONS
                         ? "🟢 ON"
                         : "🔴 OFF"
                     }
+
+${
+  !isBotEnabled(remoteJid) &&
+  remainingMinutes > 0
+    ? `⏰ *Auto ON:* ${remainingMinutes} মিনিট পর`
+    : ""
+}
 
 🛡️ *Bad Word:* ${
                       moderation.badWords
