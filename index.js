@@ -177,9 +177,7 @@ function saveWarnings() {
   }
 }
 
-function getGroupWarningData(
-  groupId
-) {
+function getGroupWarningData(groupId) {
   if (!warnings[groupId]) {
     warnings[groupId] = {};
   }
@@ -191,17 +189,12 @@ function getMemberWarningCount(
   groupId,
   memberJid
 ) {
-  if (
-    !groupId ||
-    !memberJid
-  ) {
+  if (!groupId || !memberJid) {
     return 0;
   }
 
   const groupWarnings =
-    getGroupWarningData(
-      groupId
-    );
+    getGroupWarningData(groupId);
 
   return Number(
     groupWarnings[memberJid] || 0
@@ -212,17 +205,12 @@ function addWarning(
   groupId,
   memberJid
 ) {
-  if (
-    !groupId ||
-    !memberJid
-  ) {
+  if (!groupId || !memberJid) {
     return 0;
   }
 
   const groupWarnings =
-    getGroupWarningData(
-      groupId
-    );
+    getGroupWarningData(groupId);
 
   groupWarnings[memberJid] =
     getMemberWarningCount(
@@ -232,18 +220,14 @@ function addWarning(
 
   saveWarnings();
 
-  return groupWarnings[
-    memberJid
-  ];
+  return groupWarnings[memberJid];
 }
 
 /* =========================================================
    BAD WORD CHECK
 ========================================================= */
 
-function normalizeForBadWordCheck(
-  text
-) {
+function normalizeForBadWordCheck(text) {
   return String(text || "")
     .toLowerCase()
     .replace(
@@ -256,31 +240,21 @@ function normalizeForBadWordCheck(
     );
 }
 
-function containsBadWord(
-  text
-) {
+function containsBadWord(text) {
   if (!text) {
     return null;
   }
 
   const normalized =
-    normalizeForBadWordCheck(
-      text
-    );
+    normalizeForBadWordCheck(text);
 
-  for (
-    const word of BAD_WORDS
-  ) {
+  for (const word of BAD_WORDS) {
     const normalizedWord =
-      normalizeForBadWordCheck(
-        word
-      );
+      normalizeForBadWordCheck(word);
 
     if (
       normalizedWord &&
-      normalized.includes(
-        normalizedWord
-      )
+      normalized.includes(normalizedWord)
     ) {
       return word;
     }
@@ -298,8 +272,7 @@ function containsLink(text) {
     return false;
   }
 
-  const value =
-    String(text);
+  const value = String(text);
 
   const patterns = [
     /https?:\/\/\S+/i,
@@ -311,8 +284,7 @@ function containsLink(text) {
   ];
 
   return patterns.some(
-    pattern =>
-      pattern.test(value)
+    pattern => pattern.test(value)
   );
 }
 
@@ -320,19 +292,14 @@ function containsLink(text) {
    SPAM
 ========================================================= */
 
-function normalizeSpamText(
-  text
-) {
+function normalizeSpamText(text) {
   return String(text || "")
     .toLowerCase()
     .replace(
       /[\u200B-\u200D\uFEFF]/g,
       ""
     )
-    .replace(
-      /\s+/g,
-      " "
-    )
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -357,9 +324,7 @@ function isDuplicateSpam(
   }
 
   const normalized =
-    normalizeSpamText(
-      text
-    );
+    normalizeSpamText(text);
 
   if (!normalized) {
     return false;
@@ -371,8 +336,7 @@ function isDuplicateSpam(
       memberJid
     );
 
-  const now =
-    Date.now();
+  const now = Date.now();
 
   const previous =
     spamTracker.get(key);
@@ -407,8 +371,7 @@ function isDuplicateSpam(
 
 setInterval(
   () => {
-    const now =
-      Date.now();
+    const now = Date.now();
 
     for (
       const [
@@ -421,9 +384,7 @@ setInterval(
         now - data.time >
           SPAM_WINDOW_MS * 2
       ) {
-        spamTracker.delete(
-          key
-        );
+        spamTracker.delete(key);
       }
     }
   },
@@ -439,7 +400,6 @@ let botStatus = {};
 function createDefaultGroupStatus() {
   return {
     enabled: true,
-
     disabledCommands: [],
 
     moderation: {
@@ -466,14 +426,13 @@ function loadBotStatus() {
       ) || {};
 
     for (
-      const [groupId, value]
-      of Object.entries(
-        botStatus
-      )
+      const [
+        groupId,
+        value
+      ] of Object.entries(botStatus)
     ) {
       if (
-        typeof value ===
-        "boolean"
+        typeof value === "boolean"
       ) {
         botStatus[groupId] =
           createDefaultGroupStatus();
@@ -502,11 +461,9 @@ function loadBotStatus() {
       }
 
       if (
-        !botStatus[groupId]
-          .moderation ||
+        !botStatus[groupId].moderation ||
         typeof botStatus[groupId]
-          .moderation !==
-          "object"
+          .moderation !== "object"
       ) {
         botStatus[groupId]
           .moderation = {
@@ -548,8 +505,7 @@ function loadBotStatus() {
           .groupLockedUntil !==
           "number" &&
         botStatus[groupId]
-          .groupLockedUntil !==
-          null
+          .groupLockedUntil !== null
       ) {
         botStatus[groupId]
           .groupLockedUntil = null;
@@ -588,9 +544,7 @@ function saveBotStatus() {
   }
 }
 
-function getGroupStatus(
-  groupId
-) {
+function getGroupStatus(groupId) {
   if (!botStatus[groupId]) {
     botStatus[groupId] =
       createDefaultGroupStatus();
@@ -607,11 +561,9 @@ function getGroupStatus(
   }
 
   if (
-    !botStatus[groupId]
-      .moderation ||
+    !botStatus[groupId].moderation ||
     typeof botStatus[groupId]
-      .moderation !==
-      "object"
+      .moderation !== "object"
   ) {
     botStatus[groupId]
       .moderation = {
@@ -651,13 +603,10 @@ function getGroupStatus(
   return botStatus[groupId];
 }
 
-function isBotEnabled(
-  groupId
-) {
+function isBotEnabled(groupId) {
   return (
-    getGroupStatus(
-      groupId
-    ).enabled !== false
+    getGroupStatus(groupId)
+      .enabled !== false
   );
 }
 
@@ -665,10 +614,8 @@ function setBotStatus(
   groupId,
   enabled
 ) {
-  getGroupStatus(
-    groupId
-  ).enabled =
-    Boolean(enabled);
+  getGroupStatus(groupId)
+    .enabled = Boolean(enabled);
 
   saveBotStatus();
 }
@@ -769,9 +716,7 @@ const PROTECTED_COMMANDS = [
   "গ্রুপ"
 ];
 
-function normalizeCommandName(
-  command
-) {
+function normalizeCommandName(command) {
   if (!command) {
     return "";
   }
@@ -779,55 +724,37 @@ function normalizeCommandName(
   return String(command)
     .trim()
     .toLowerCase()
-    .replace(
-      /^\/+/,
-      ""
-    );
+    .replace(/^\/+/, "");
 }
 
-function getCanonicalCommand(
-  command
-) {
+function getCanonicalCommand(command) {
   const normalized =
-    normalizeCommandName(
-      command
-    );
+    normalizeCommandName(command);
 
   if (!normalized) {
     return "";
   }
 
   return (
-    COMMAND_ALIASES[
-      normalized
-    ] ||
+    COMMAND_ALIASES[normalized] ||
     normalized
   );
 }
 
-function getCommandDefinition(
-  command
-) {
+function getCommandDefinition(command) {
   const key =
-    getCanonicalCommand(
-      command
-    );
+    getCanonicalCommand(command);
 
   return (
     COMMAND_DEFINITIONS.find(
-      item =>
-        item.key === key
+      item => item.key === key
     ) || null
   );
 }
 
-function isKnownCommand(
-  command
-) {
+function isKnownCommand(command) {
   return Boolean(
-    getCommandDefinition(
-      command
-    )
+    getCommandDefinition(command)
   );
 }
 
@@ -836,19 +763,15 @@ function isCommandEnabled(
   command
 ) {
   const name =
-    getCanonicalCommand(
-      command
-    );
+    getCanonicalCommand(command);
 
   if (!name) {
     return true;
   }
 
-  return !getGroupStatus(
-    groupId
-  ).disabledCommands.includes(
-    name
-  );
+  return !getGroupStatus(groupId)
+    .disabledCommands
+    .includes(name);
 }
 
 function setCommandStatus(
@@ -857,18 +780,14 @@ function setCommandStatus(
   enabled
 ) {
   const name =
-    getCanonicalCommand(
-      command
-    );
+    getCanonicalCommand(command);
 
   if (!name) {
     return false;
   }
 
   const status =
-    getGroupStatus(
-      groupId
-    );
+    getGroupStatus(groupId);
 
   const list =
     status.disabledCommands;
@@ -878,10 +797,7 @@ function setCommandStatus(
 
   if (enabled) {
     if (index !== -1) {
-      list.splice(
-        index,
-        1
-      );
+      list.splice(index, 1);
     }
   } else {
     if (index === -1) {
@@ -898,15 +814,9 @@ function setCommandStatus(
    MODERATION
 ========================================================= */
 
-function getModerationStatus(
-  groupId
-) {
-  const status =
-    getGroupStatus(
-      groupId
-    );
-
-  return status.moderation;
+function getModerationStatus(groupId) {
+  return getGroupStatus(groupId)
+    .moderation;
 }
 
 function isModerationEnabled(
@@ -914,9 +824,7 @@ function isModerationEnabled(
   type
 ) {
   return Boolean(
-    getModerationStatus(
-      groupId
-    )[type]
+    getModerationStatus(groupId)[type]
   );
 }
 
@@ -926,9 +834,7 @@ function setModerationStatus(
   enabled
 ) {
   const moderation =
-    getModerationStatus(
-      groupId
-    );
+    getModerationStatus(groupId);
 
   if (
     !Object.prototype.hasOwnProperty.call(
@@ -967,8 +873,7 @@ async function deleteMessage(
     await sock.sendMessage(
       remoteJid,
       {
-        delete:
-          message.key
+        delete: message.key
       }
     );
 
@@ -1028,11 +933,7 @@ async function sendModerationWarning(
       text
     };
 
-    if (
-      isPhoneJid(
-        phoneJid
-      )
-    ) {
+    if (isPhoneJid(phoneJid)) {
       messageData.mentions = [
         phoneJid
       ];
@@ -1064,11 +965,7 @@ async function moderateMessage(
       return false;
     }
 
-    if (
-      !isBotEnabled(
-        remoteJid
-      )
-    ) {
+    if (!isBotEnabled(remoteJid)) {
       return false;
     }
 
@@ -1094,9 +991,7 @@ async function moderateMessage(
       )
     ) {
       const badWord =
-        containsBadWord(
-          text
-        );
+        containsBadWord(text);
 
       if (badWord) {
         const deleted =
@@ -1123,8 +1018,7 @@ async function moderateMessage(
             warningCount =
               addWarning(
                 remoteJid,
-                memberJid ||
-                  sender
+                memberJid || sender
               );
           }
 
@@ -1178,8 +1072,7 @@ async function moderateMessage(
           warningCount =
             addWarning(
               remoteJid,
-              memberJid ||
-                sender
+              memberJid || sender
             );
         }
 
@@ -1207,8 +1100,7 @@ async function moderateMessage(
         });
 
       const spamJid =
-        memberJid ||
-        sender;
+        memberJid || sender;
 
       if (
         isDuplicateSpam(
@@ -1276,10 +1168,7 @@ async function moderateMessage(
 const server =
   http.createServer(
     (req, res) => {
-      if (
-        req.url ===
-        "/health"
-      ) {
+      if (req.url === "/health") {
         res.writeHead(
           200,
           {
@@ -1361,9 +1250,7 @@ function isLidJid(jid) {
   );
 }
 
-function phoneNumberToJid(
-  phone
-) {
+function phoneNumberToJid(phone) {
   if (!phone) {
     return null;
   }
@@ -1400,20 +1287,14 @@ function cleanName(name) {
 
   const value =
     String(name)
-      .replace(
-        /\s+/g,
-        " "
-      )
+      .replace(/\s+/g, " ")
       .trim();
 
   if (!value) {
     return null;
   }
 
-  return value.slice(
-    0,
-    80
-  );
+  return value.slice(0, 80);
 }
 
 function getDisplayName(
@@ -1425,9 +1306,7 @@ function getDisplayName(
     participant.phoneNumber
   ].filter(Boolean);
 
-  for (
-    const id of ids
-  ) {
+  for (const id of ids) {
     const cached =
       contactNames.get(id);
 
@@ -1449,9 +1328,7 @@ function getDisplayName(
     return directName;
   }
 
-  if (
-    participant.phoneNumber
-  ) {
+  if (participant.phoneNumber) {
     const phone =
       String(
         participant.phoneNumber
@@ -1524,9 +1401,7 @@ function saveLidMapping(
   );
 }
 
-async function resolveLidToPhoneJid(
-  lid
-) {
+async function resolveLidToPhoneJid(lid) {
   if (!lid) {
     return null;
   }
@@ -1565,9 +1440,7 @@ async function resolveLidToPhoneJid(
       const phoneJid =
         isPhoneJid(pn)
           ? pn
-          : phoneNumberToJid(
-              pn
-            );
+          : phoneNumberToJid(pn);
 
       if (phoneJid) {
         saveLidMapping(
@@ -1595,28 +1468,20 @@ async function resolveLidToPhoneJid(
 function saveContacts(
   contacts = []
 ) {
-  for (
-    const contact of contacts
-  ) {
+  for (const contact of contacts) {
     if (!contact) {
       continue;
     }
 
     const id =
-      normalizeJid(
-        contact.id
-      );
+      normalizeJid(contact.id);
 
     const lid =
-      normalizeJid(
-        contact.lid
-      );
+      normalizeJid(contact.lid);
 
     let phoneJid = null;
 
-    if (
-      contact.phoneNumber
-    ) {
+    if (contact.phoneNumber) {
       phoneJid =
         isPhoneJid(
           contact.phoneNumber
@@ -1716,9 +1581,7 @@ function saveContacts(
 function getDirectPhoneJid(
   participant = {}
 ) {
-  if (
-    participant.phoneNumber
-  ) {
+  if (participant.phoneNumber) {
     const jid =
       isPhoneJid(
         participant.phoneNumber
@@ -1761,9 +1624,7 @@ async function getPhoneJid(
     participant.lid
   ].filter(Boolean);
 
-  for (
-    const id of ids
-  ) {
+  for (const id of ids) {
     const cached =
       contactPhoneJids.get(id) ||
       lidToPhoneJid.get(id);
@@ -1907,16 +1768,11 @@ function isAdminParticipant(
   participant = {}
 ) {
   return (
-    participant.admin ===
-      "admin" ||
-    participant.admin ===
-      "superadmin" ||
-    participant.admin ===
-      true ||
-    participant.isAdmin ===
-      true ||
-    participant.isSuperAdmin ===
-      true
+    participant.admin === "admin" ||
+    participant.admin === "superadmin" ||
+    participant.admin === true ||
+    participant.isAdmin === true ||
+    participant.isSuperAdmin === true
   );
 }
 
@@ -1924,10 +1780,8 @@ function isOwnerParticipant(
   participant = {}
 ) {
   return (
-    participant.admin ===
-      "superadmin" ||
-    participant.isSuperAdmin ===
-      true
+    participant.admin === "superadmin" ||
+    participant.isSuperAdmin === true
   );
 }
 
@@ -1942,12 +1796,9 @@ function findParticipant(
   return (
     participants.find(
       participant =>
-        participant?.id ===
-          jid ||
-        participant?.lid ===
-          jid ||
-        participant?.phoneNumber ===
-          jid
+        participant?.id === jid ||
+        participant?.lid === jid ||
+        participant?.phoneNumber === jid
     ) || null
   );
 }
@@ -1964,19 +1815,13 @@ function getBotPhoneJid() {
       );
 
     if (isPhoneJid(ownId)) {
-      return ownId.split(
-        ":"
-      )[0];
+      return ownId.split(":")[0];
     }
 
     if (isLidJid(ownId)) {
       const cached =
-        lidToPhoneJid.get(
-          ownId
-        ) ||
-        contactPhoneJids.get(
-          ownId
-        );
+        lidToPhoneJid.get(ownId) ||
+        contactPhoneJids.get(ownId);
 
       if (isPhoneJid(cached)) {
         return cached;
@@ -2006,9 +1851,7 @@ async function isBotAdminInGroup(
     if (
       !sock ||
       !groupId ||
-      !groupId.endsWith(
-        "@g.us"
-      )
+      !groupId.endsWith("@g.us")
     ) {
       return false;
     }
@@ -2019,8 +1862,7 @@ async function isBotAdminInGroup(
       );
 
     const participants =
-      metadata?.participants ||
-      [];
+      metadata?.participants || [];
 
     if (!participants.length) {
       return false;
@@ -2086,8 +1928,7 @@ async function isBotAdminInGroup(
 
             return (
               phone &&
-              phone ===
-                botNumber
+              phone === botNumber
             );
           }
         );
@@ -2127,9 +1968,7 @@ async function isBotAdminInGroup(
 
     console.log(
       `${admin ? "👑" : "🚫"} Bot Admin Status: ${groupId} → ${
-        admin
-          ? "ADMIN"
-          : "NOT ADMIN"
+        admin ? "ADMIN" : "NOT ADMIN"
       }`
     );
 
@@ -2144,14 +1983,10 @@ async function isBotAdminInGroup(
   }
 }
 
-async function isGroupAllowed(
-  groupId
-) {
+async function isGroupAllowed(groupId) {
   if (
     !groupId ||
-    !groupId.endsWith(
-      "@g.us"
-    )
+    !groupId.endsWith("@g.us")
   ) {
     return false;
   }
@@ -2170,16 +2005,12 @@ async function isSenderAdmin(
   message
 ) {
   try {
-    if (
-      !sock ||
-      !remoteJid
-    ) {
+    if (!sock || !remoteJid) {
       return false;
     }
 
     const participantJid =
-      message?.key
-        ?.participant;
+      message?.key?.participant;
 
     if (!participantJid) {
       return false;
@@ -2191,8 +2022,7 @@ async function isSenderAdmin(
       );
 
     const participants =
-      metadata?.participants ||
-      [];
+      metadata?.participants || [];
 
     await cacheParticipants(
       participants
@@ -2253,16 +2083,13 @@ async function isSenderAdmin(
    COPY BUTTON
 ========================================================= */
 
-function makeCopyButton(
-  command
-) {
+function makeCopyButton(command) {
   return {
     name: "cta_copy",
 
     buttonParamsJson:
       JSON.stringify({
-        display_text:
-          "📋 Copy",
+        display_text: "📋 Copy",
 
         id:
           "copy_" +
@@ -2270,8 +2097,7 @@ function makeCopyButton(
             command
           ),
 
-        copy_code:
-          command
+        copy_code: command
       })
   };
 }
@@ -2282,9 +2108,7 @@ async function sendCopyButton(
 ) {
   try {
     const button =
-      makeCopyButton(
-        command
-      );
+      makeCopyButton(command);
 
     const message =
       generateWAMessageFromContent(
@@ -2361,8 +2185,7 @@ async function sendCopyButtons(
   ];
 
   for (
-    const command of
-      uniqueCommands
+    const command of uniqueCommands
   ) {
     await sendCopyButton(
       remoteJid,
@@ -2383,9 +2206,7 @@ async function sendCopyButtons(
    PUBLIC MENU
 ========================================================= */
 
-function buildMenuText(
-  remoteJid
-) {
+function buildMenuText(remoteJid) {
   const enabled =
     command =>
       isCommandEnabled(
@@ -2473,6 +2294,14 @@ function buildMenuText(
   }
 ╰────────────────────
 
+╭─❖ 🧮 *CALCULATOR*
+│
+│ 1️⃣2️⃣ /20+2
+│ 1️⃣3️⃣ /100-25
+│ 1️⃣4️⃣ /20*5
+│ 1️⃣5️⃣ /100/4
+╰────────────────────
+
 ━━━━━━━━━━━━━━━━━━━━
 `;
 }
@@ -2485,9 +2314,7 @@ async function sendPublicMenu(
       remoteJid,
       {
         text:
-          buildMenuText(
-            remoteJid
-          )
+          buildMenuText(remoteJid)
       }
     );
 
@@ -2525,58 +2352,227 @@ async function sendPublicMenu(
 }
 
 /* =========================================================
+   CALCULATOR
+========================================================= */
+
+function calculateExpression(
+  expression
+) {
+  try {
+    const value =
+      String(expression || "")
+        .trim()
+        .replace(/,/g, "");
+
+    if (!value) {
+      return null;
+    }
+
+    if (
+      !/^[0-9+\-*/%.()\s]+$/.test(
+        value
+      )
+    ) {
+      return null;
+    }
+
+    if (
+      value.includes("**") ||
+      value.includes("//") ||
+      value.includes("/*") ||
+      value.includes("*/")
+    ) {
+      return null;
+    }
+
+    if (!/\d/.test(value)) {
+      return null;
+    }
+
+    if (!/[+\-*/%]/.test(value)) {
+      return null;
+    }
+
+    const result =
+      Function(
+        `"use strict"; return (${value})`
+      )();
+
+    if (
+      typeof result !== "number" ||
+      !Number.isFinite(result)
+    ) {
+      return null;
+    }
+
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function formatCalculationResult(
+  result
+) {
+  if (
+    typeof result !== "number" ||
+    !Number.isFinite(result)
+  ) {
+    return null;
+  }
+
+  if (Number.isInteger(result)) {
+    return String(result);
+  }
+
+  return Number(
+    result.toFixed(10)
+  ).toString();
+}
+
+function isCalculatorMessage(text) {
+  if (!text) {
+    return false;
+  }
+
+  const value =
+    String(text).trim();
+
+  if (!value.startsWith("/")) {
+    return false;
+  }
+
+  const expression =
+    value.slice(1).trim();
+
+  if (!expression) {
+    return false;
+  }
+
+  return /^[0-9+\-*/%.()\s]+$/.test(
+    expression
+  );
+}
+
+async function handleCalculator(
+  remoteJid,
+  text
+) {
+  try {
+    const expression =
+      String(text)
+        .trim()
+        .slice(1)
+        .trim();
+
+    const result =
+      calculateExpression(
+        expression
+      );
+
+    if (result === null) {
+      await sock.sendMessage(
+        remoteJid,
+        {
+          text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🧮 *CALCULATOR*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+❌ হিসাবটি সঠিক নয়।
+
+💡 উদাহরণ:
+
+/20+2
+/100-25
+/20*5
+/100/4
+/(20+5)*2
+/500+250-100
+
+🤍 *Piyas Bot*
+`
+        }
+      );
+
+      return true;
+    }
+
+    const formattedResult =
+      formatCalculationResult(
+        result
+      );
+
+    await sock.sendMessage(
+      remoteJid,
+      {
+        text: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+       🧮 *CALCULATOR*
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+📌 *Expression:*
+${expression}
+
+━━━━━━━━━━━━━━━━━━━━
+
+✅ *Result:*
+${formattedResult}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🤍 *Piyas Bot*
+`
+      }
+    );
+
+    return true;
+  } catch (error) {
+    console.log(
+      "⚠️ Calculator error:",
+      error?.message
+    );
+
+    return false;
+  }
+}
+/* =========================================================
    ADMIN PANEL
 ========================================================= */
 
-async function sendAdminPanel(
-  remoteJid
-) {
+async function sendAdminPanel(remoteJid) {
   try {
     const disabled =
-      getGroupStatus(
-        remoteJid
-      ).disabledCommands ||
-      [];
+      getGroupStatus(remoteJid)
+        .disabledCommands || [];
 
     const commandStatus =
       COMMAND_DEFINITIONS
         .map(item => {
           const enabled =
-            !disabled.includes(
-              item.key
-            );
+            !disabled.includes(item.key);
 
           return `│ ${
-            enabled
-              ? "🟢"
-              : "🔴"
+            enabled ? "🟢" : "🔴"
           } ${item.command} ${
-            enabled
-              ? "ON"
-              : "OFF"
+            enabled ? "ON" : "OFF"
           }`;
         })
         .join("\n");
 
     const moderation =
-      getModerationStatus(
-        remoteJid
-      );
+      getModerationStatus(remoteJid);
 
     const lock =
-      getGroupStatus(
-        remoteJid
-      ).groupLockedUntil;
+      getGroupStatus(remoteJid)
+        .groupLockedUntil;
 
     const lockStatus =
-      typeof lock ===
-        "number" &&
+      typeof lock === "number" &&
       lock > Date.now()
         ? `🔒 Group Closed\n⏰ ${new Date(
             lock
-          ).toLocaleString(
-            "en-BD"
-          )}`
+          ).toLocaleString("en-BD")}`
         : "🔓 Group Open";
 
     const text = `
@@ -2589,9 +2585,7 @@ async function sendAdminPanel(
 ╭─❖ 🤖 *BOT STATUS*
 │
 │ ${
-      isBotEnabled(
-        remoteJid
-      )
+      isBotEnabled(remoteJid)
         ? "🟢 Bot: ON"
         : "🔴 Bot: OFF"
     }
@@ -2610,40 +2604,24 @@ ${commandStatus}
 ╭─❖ 🛡️ *MODERATION STATUS*
 │
 │ ${
-      moderation.badWords
-        ? "🟢"
-        : "🔴"
+      moderation.badWords ? "🟢" : "🔴"
     } Bad Word Filter: ${
-      moderation.badWords
-        ? "ON"
-        : "OFF"
+      moderation.badWords ? "ON" : "OFF"
     }
 │ ${
-      moderation.links
-        ? "🟢"
-        : "🔴"
+      moderation.links ? "🟢" : "🔴"
     } Link Protection: ${
-      moderation.links
-        ? "ON"
-        : "OFF"
+      moderation.links ? "ON" : "OFF"
     }
 │ ${
-      moderation.spam
-        ? "🟢"
-        : "🔴"
+      moderation.spam ? "🟢" : "🔴"
     } Duplicate Spam: ${
-      moderation.spam
-        ? "ON"
-        : "OFF"
+      moderation.spam ? "ON" : "OFF"
     }
 │ ${
-      moderation.warnings
-        ? "🟢"
-        : "🔴"
+      moderation.warnings ? "🟢" : "🔴"
     } Warning System: ${
-      moderation.warnings
-        ? "ON"
-        : "OFF"
+      moderation.warnings ? "ON" : "OFF"
     }
 │ 🚫 Member Remove: DISABLED
 │ 🚫 Kick/Ban: DISABLED
@@ -2671,9 +2649,7 @@ ${commandStatus}
 
     await sock.sendMessage(
       remoteJid,
-      {
-        text
-      }
+      { text }
     );
 
     await sendCopyButtons(
@@ -2705,41 +2681,28 @@ ${commandStatus}
    COMMAND LIST
 ========================================================= */
 
-async function sendCommandList(
-  remoteJid
-) {
+async function sendCommandList(remoteJid) {
   const disabled =
-    getGroupStatus(
-      remoteJid
-    ).disabledCommands ||
-    [];
+    getGroupStatus(remoteJid)
+      .disabledCommands || [];
 
   const commandLines =
-    COMMAND_DEFINITIONS
-      .map(item => {
-        const enabled =
-          !disabled.includes(
-            item.key
-          );
+    COMMAND_DEFINITIONS.map(item => {
+      const enabled =
+        !disabled.includes(item.key);
 
-        return `${
-          enabled
-            ? "🟢 ON "
-            : "🔴 OFF"
-        } ${item.command}`;
-      });
+      return `${
+        enabled ? "🟢 ON " : "🔴 OFF"
+      } ${item.command}`;
+    });
 
   const moderation =
-    getModerationStatus(
-      remoteJid
-    );
+    getModerationStatus(remoteJid);
 
   const onCount =
     COMMAND_DEFINITIONS.filter(
       item =>
-        !disabled.includes(
-          item.key
-        )
+        !disabled.includes(item.key)
     ).length;
 
   const offCount =
@@ -2765,9 +2728,7 @@ ${commandLines.join("\n")}
 
 🤖 BOT:
 ${
-  isBotEnabled(
-    remoteJid
-  )
+  isBotEnabled(remoteJid)
     ? "🟢 ON"
     : "🔴 OFF"
 }
@@ -2777,44 +2738,28 @@ ${
 🛡️ MODERATION:
 
 ${
-  moderation.badWords
-    ? "🟢"
-    : "🔴"
+  moderation.badWords ? "🟢" : "🔴"
 } Bad Word: ${
-    moderation.badWords
-      ? "ON"
-      : "OFF"
-  }
+  moderation.badWords ? "ON" : "OFF"
+}
 
 ${
-  moderation.links
-    ? "🟢"
-    : "🔴"
+  moderation.links ? "🟢" : "🔴"
 } Link: ${
-    moderation.links
-      ? "ON"
-      : "OFF"
-  }
+  moderation.links ? "ON" : "OFF"
+}
 
 ${
-  moderation.spam
-    ? "🟢"
-    : "🔴"
+  moderation.spam ? "🟢" : "🔴"
 } Duplicate Spam: ${
-    moderation.spam
-      ? "ON"
-      : "OFF"
-  }
+  moderation.spam ? "ON" : "OFF"
+}
 
 ${
-  moderation.warnings
-    ? "🟢"
-    : "🔴"
+  moderation.warnings ? "🟢" : "🔴"
 } Warning: ${
-    moderation.warnings
-      ? "ON"
-      : "OFF"
-  }
+  moderation.warnings ? "ON" : "OFF"
+}
 
 🚫 Member Remove: OFF
 🚫 Kick/Ban: OFF
@@ -2833,15 +2778,11 @@ async function sendModerationStatus(
   remoteJid
 ) {
   const disabled =
-    getGroupStatus(
-      remoteJid
-    ).disabledCommands ||
-    [];
+    getGroupStatus(remoteJid)
+      .disabledCommands || [];
 
   const moderation =
-    getModerationStatus(
-      remoteJid
-    );
+    getModerationStatus(remoteJid);
 
   const disabledText =
     disabled.length
@@ -2869,40 +2810,24 @@ ${disabledText}
 ╭─❖ 🛡️ *MODERATION*
 │
 │ ${
-      moderation.badWords
-        ? "🟢"
-        : "🔴"
+      moderation.badWords ? "🟢" : "🔴"
     } Bad Word: ${
-      moderation.badWords
-        ? "ON"
-        : "OFF"
+      moderation.badWords ? "ON" : "OFF"
     }
 │ ${
-      moderation.links
-        ? "🟢"
-        : "🔴"
+      moderation.links ? "🟢" : "🔴"
     } Link: ${
-      moderation.links
-        ? "ON"
-        : "OFF"
+      moderation.links ? "ON" : "OFF"
     }
 │ ${
-      moderation.spam
-        ? "🟢"
-        : "🔴"
+      moderation.spam ? "🟢" : "🔴"
     } Duplicate Spam: ${
-      moderation.spam
-        ? "ON"
-        : "OFF"
+      moderation.spam ? "ON" : "OFF"
     }
 │ ${
-      moderation.warnings
-        ? "🟢"
-        : "🔴"
+      moderation.warnings ? "🟢" : "🔴"
     } Warning: ${
-      moderation.warnings
-        ? "ON"
-        : "OFF"
+      moderation.warnings ? "ON" : "OFF"
     }
 ╰────────────────────
 
@@ -3015,8 +2940,6 @@ const PIYAS_INFO = `
        🤍 *PIYAS*
 ╰━━━━━━━━━━━━━━━━━━╯
 
-☪️ *আমার সবচেয়ে বড় পরিচয়: আমি একজন মুসলিম এবং মহানবী হযরত মুহাম্মাদ (সা.)-এর উম্মত।* 🤍
-
 👤 *Name:* মোঃ আল আমিন
 🌐 *English Name:* MD. AL AMIN
 
@@ -3037,7 +2960,7 @@ const PIYAS_INFO = `
 `;
 
 /* =========================================================
-   BOT OFF / ON
+   BOT ON / OFF
 ========================================================= */
 
 const BOT_OFF_TEXT = `
@@ -3120,9 +3043,7 @@ Admin-এর মাধ্যমে Deal করুন।
    ADMIN DATA
 ========================================================= */
 
-async function getAdminData(
-  remoteJid
-) {
+async function getAdminData(remoteJid) {
   try {
     const metadata =
       await sock.groupMetadata(
@@ -3130,8 +3051,7 @@ async function getAdminData(
       );
 
     const participants =
-      metadata?.participants ||
-      [];
+      metadata?.participants || [];
 
     await cacheParticipants(
       participants
@@ -3143,8 +3063,7 @@ async function getAdminData(
       );
 
     const result = [];
-    const usedJids =
-      new Set();
+    const usedJids = new Set();
 
     for (
       const participant of
@@ -3169,17 +3088,13 @@ async function getAdminData(
 
       if (
         phoneJid &&
-        usedJids.has(
-          phoneJid
-        )
+        usedJids.has(phoneJid)
       ) {
         continue;
       }
 
       if (phoneJid) {
-        usedJids.add(
-          phoneJid
-        );
+        usedJids.add(phoneJid);
       }
 
       result.push({
@@ -3218,9 +3133,7 @@ async function getAdminData(
 async function sendAdminList(
   remoteJid
 ) {
-  const {
-    admins
-  } =
+  const { admins } =
     await getAdminData(
       remoteJid
     );
@@ -3251,9 +3164,7 @@ async function sendAdminList(
         : "👑 *Admin*";
 
     if (
-      isPhoneJid(
-        admin.jid
-      )
+      isPhoneJid(admin.jid)
     ) {
       const phone =
         admin.jid
@@ -3303,9 +3214,7 @@ ${lines.join("\n\n")}
 async function sendDealNotice(
   remoteJid
 ) {
-  const {
-    admins
-  } =
+  const { admins } =
     await getAdminData(
       remoteJid
     );
@@ -3338,9 +3247,7 @@ async function sendDealNotice(
         : "👑 *Admin*";
 
     if (
-      isPhoneJid(
-        admin.jid
-      )
+      isPhoneJid(admin.jid)
     ) {
       const phone =
         admin.jid
@@ -3374,6 +3281,7 @@ async function sendDealNotice(
         lines.join("\n\n") +
         `\n\n👥 *মোট Admin:* ${admins.length} জন\n\n` +
         DEAL_NOTICE_BOTTOM,
+
       mentions
     }
   );
@@ -3474,14 +3382,11 @@ async function sendWelcome(
     }
 
     if (!member) {
-      member =
-        participant;
+      member = participant;
     }
 
     const name =
-      getDisplayName(
-        member
-      );
+      getDisplayName(member);
 
     const groupName =
       cleanName(
@@ -3490,9 +3395,7 @@ async function sendWelcome(
       "এই গ্রুপ";
 
     const phoneJid =
-      await getPhoneJid(
-        member
-      );
+      await getPhoneJid(member);
 
     const welcomeText =
       getWelcomeText(
@@ -3500,19 +3403,12 @@ async function sendWelcome(
         groupName
       );
 
-    if (
-      isPhoneJid(
-        phoneJid
-      )
-    ) {
+    if (isPhoneJid(phoneJid)) {
       await sock.sendMessage(
         groupId,
         {
-          text:
-            welcomeText,
-          mentions: [
-            phoneJid
-          ]
+          text: welcomeText,
+          mentions: [phoneJid]
         }
       );
     } else {
@@ -3552,21 +3448,15 @@ const BANGLA_DIGITS = {
   "৯": "9"
 };
 
-function convertBanglaDigits(
-  value
-) {
+function convertBanglaDigits(value) {
   return String(value).replace(
     /[০-৯]/g,
     digit =>
-      BANGLA_DIGITS[
-        digit
-      ]
+      BANGLA_DIGITS[digit]
   );
 }
 
-function parseDurationNumber(
-  value
-) {
+function parseDurationNumber(value) {
   if (!value) {
     return null;
   }
@@ -3583,9 +3473,7 @@ function parseDurationNumber(
       converted
     )
   ) {
-    return Number(
-      converted
-    );
+    return Number(converted);
   }
 
   const words = {
@@ -3622,15 +3510,10 @@ function parseDurationNumber(
     "একশো": 100
   };
 
-  return (
-    words[converted] ??
-    null
-  );
+  return words[converted] ?? null;
 }
 
-function parseGroupDuration(
-  text
-) {
+function parseGroupDuration(text) {
   if (!text) {
     return null;
   }
@@ -3688,8 +3571,7 @@ function parseGroupDuration(
     {
       regex:
         /(\d+(?:\.\d+)?)\s*(সেকেন্ড|সেকেন্ডের|second|seconds|sec|secs|s)(?=\s|$)/giu,
-      ms:
-        1000
+      ms: 1000
     }
   ];
 
@@ -3700,9 +3582,8 @@ function parseGroupDuration(
 
     while (
       (match =
-        item.regex.exec(
-          input
-        )) !== null
+        item.regex.exec(input)) !==
+      null
     ) {
       const number =
         parseDurationNumber(
@@ -3714,8 +3595,7 @@ function parseGroupDuration(
         number > 0
       ) {
         total +=
-          number *
-          item.ms;
+          number * item.ms;
 
         found = true;
       }
@@ -3724,9 +3604,7 @@ function parseGroupDuration(
 
   if (!found) {
     const number =
-      parseDurationNumber(
-        input
-      );
+      parseDurationNumber(input);
 
     if (
       number &&
@@ -3794,45 +3672,32 @@ function formatGroupDuration(
       seconds / 60
     );
 
-  seconds %=
-    60;
+  seconds %= 60;
 
   const parts = [];
 
   if (years) {
-    parts.push(
-      `${years} বছর`
-    );
+    parts.push(`${years} বছর`);
   }
 
   if (months) {
-    parts.push(
-      `${months} মাস`
-    );
+    parts.push(`${months} মাস`);
   }
 
   if (days) {
-    parts.push(
-      `${days} দিন`
-    );
+    parts.push(`${days} দিন`);
   }
 
   if (hours) {
-    parts.push(
-      `${hours} ঘণ্টা`
-    );
+    parts.push(`${hours} ঘণ্টা`);
   }
 
   if (minutes) {
-    parts.push(
-      `${minutes} মিনিট`
-    );
+    parts.push(`${minutes} মিনিট`);
   }
 
   if (seconds) {
-    parts.push(
-      `${seconds} সেকেন্ড`
-    );
+    parts.push(`${seconds} সেকেন্ড`);
   }
 
   return (
@@ -3853,9 +3718,7 @@ async function lockGroup(
     if (
       !sock ||
       !remoteJid ||
-      !remoteJid.endsWith(
-        "@g.us"
-      )
+      !remoteJid.endsWith("@g.us")
     ) {
       return false;
     }
@@ -3887,13 +3750,10 @@ async function lockGroup(
     );
 
     const status =
-      getGroupStatus(
-        remoteJid
-      );
+      getGroupStatus(remoteJid);
 
     status.groupLockedUntil =
-      Date.now() +
-      durationMs;
+      Date.now() + durationMs;
 
     saveBotStatus();
 
@@ -3909,9 +3769,7 @@ async function lockGroup(
 Message পাঠাতে পারবে।
 
 ⏱️ *সময়:*
-${formatGroupDuration(
-  durationMs
-)}
+${formatGroupDuration(durationMs)}
 
 ⏰ সময় শেষ হলে Group
 automatically আবার OPEN হবে।
@@ -3928,16 +3786,6 @@ automatically আবার OPEN হবে।
       error?.message
     );
 
-    try {
-      await sock.sendMessage(
-        remoteJid,
-        {
-          text:
-            "❌ Group বন্ধ করা যায়নি। Bot-এর Admin permission চেক করুন।"
-        }
-      );
-    } catch {}
-
     return false;
   }
 }
@@ -3950,9 +3798,7 @@ async function unlockGroup(
     if (
       !sock ||
       !remoteJid ||
-      !remoteJid.endsWith(
-        "@g.us"
-      )
+      !remoteJid.endsWith("@g.us")
     ) {
       return false;
     }
@@ -3963,18 +3809,13 @@ async function unlockGroup(
     );
 
     const status =
-      getGroupStatus(
-        remoteJid
-      );
+      getGroupStatus(remoteJid);
 
-    status.groupLockedUntil =
-      null;
+    status.groupLockedUntil = null;
 
     saveBotStatus();
 
-    if (
-      reason === "timer"
-    ) {
+    if (reason === "timer") {
       await sock.sendMessage(
         remoteJid,
         {
@@ -4010,21 +3851,17 @@ async function checkExpiredGroupLocks() {
     return;
   }
 
-  const now =
-    Date.now();
+  const now = Date.now();
 
   for (
     const [
       groupId,
       status
-    ] of Object.entries(
-      botStatus
-    )
+    ] of Object.entries(botStatus)
   ) {
     if (
       !status ||
-      typeof status !==
-        "object"
+      typeof status !== "object"
     ) {
       continue;
     }
@@ -4039,13 +3876,7 @@ async function checkExpiredGroupLocks() {
       continue;
     }
 
-    if (
-      lockedUntil <= now
-    ) {
-      console.log(
-        `🔓 Auto opening group: ${groupId}`
-      );
-
+    if (lockedUntil <= now) {
       await unlockGroup(
         groupId,
         "timer"
@@ -4059,85 +3890,11 @@ setInterval(
   GROUP_LOCK_CHECK_INTERVAL
 );
 
-async function restoreGroupLocks() {
-  if (!sock) {
-    return;
-  }
-
-  const now =
-    Date.now();
-
-  for (
-    const [
-      groupId,
-      status
-    ] of Object.entries(
-      botStatus
-    )
-  ) {
-    if (
-      !status ||
-      typeof status !==
-        "object"
-    ) {
-      continue;
-    }
-
-    const lockedUntil =
-      status.groupLockedUntil;
-
-    if (
-      typeof lockedUntil !==
-      "number"
-    ) {
-      continue;
-    }
-
-    if (
-      lockedUntil <= now
-    ) {
-      await unlockGroup(
-        groupId,
-        "timer"
-      );
-
-      continue;
-    }
-
-    try {
-      const botAdmin =
-        await isBotAdminInGroup(
-          groupId
-        );
-
-      if (!botAdmin) {
-        continue;
-      }
-
-      await sock.groupSettingUpdate(
-        groupId,
-        "announcement"
-      );
-
-      console.log(
-        `🔒 Restored group lock: ${groupId}`
-      );
-    } catch (error) {
-      console.log(
-        `⚠️ Restore group lock error: ${groupId}`,
-        error?.message
-      );
-    }
-  }
-}
-
 /* =========================================================
    PAIRING
 ========================================================= */
 
-function savePairingNumber(
-  number
-) {
+function savePairingNumber(number) {
   try {
     fs.writeFileSync(
       PAIRING_NUMBER_FILE,
@@ -4147,16 +3904,12 @@ function savePairingNumber(
   } catch {}
 }
 
-function getCredentialPhoneNumber(
-  creds
-) {
-  const id =
-    creds?.me?.id;
+function getCredentialPhoneNumber(creds) {
+  const id = creds?.me?.id;
 
   if (
     !id ||
-    typeof id !==
-      "string"
+    typeof id !== "string"
   ) {
     return "";
   }
@@ -4173,9 +3926,7 @@ function getCredentialPhoneNumber(
 async function resetAuthForNumberChange() {
   try {
     if (
-      fs.existsSync(
-        AUTH_DIR
-      )
+      fs.existsSync(AUTH_DIR)
     ) {
       await fs.promises.rm(
         AUTH_DIR,
@@ -4209,9 +3960,7 @@ async function generatePairingCode(
       return;
     }
 
-    if (
-      state.creds.registered
-    ) {
+    if (state.creds.registered) {
       return;
     }
 
@@ -4272,70 +4021,10 @@ async function generatePairingCode(
 }
 
 /* =========================================================
-   LID EVENT
-========================================================= */
-
-function handleLidMappingUpdate(
-  mapping
-) {
-  try {
-    if (!mapping) {
-      return;
-    }
-
-    const mappings =
-      Array.isArray(mapping)
-        ? mapping
-        : Array.isArray(
-            mapping?.mappings
-          )
-          ? mapping.mappings
-          : [mapping];
-
-    for (
-      const item of mappings
-    ) {
-      if (!item) {
-        continue;
-      }
-
-      const lid =
-        item.lid ||
-        item.lidJid ||
-        item.lid_jid;
-
-      const pn =
-        item.pn ||
-        item.pnJid ||
-        item.pn_jid ||
-        item.phone ||
-        item.phoneNumber;
-
-      if (
-        lid &&
-        pn
-      ) {
-        saveLidMapping(
-          lid,
-          pn
-        );
-      }
-    }
-  } catch (error) {
-    console.log(
-      "⚠️ LID mapping update error:",
-      error?.message
-    );
-  }
-}
-
-/* =========================================================
    MESSAGE TEXT
 ========================================================= */
 
-function getMessageText(
-  message
-) {
+function getMessageText(message) {
   const msg =
     message?.message;
 
@@ -4431,33 +4120,6 @@ async function startBot() {
       saveCreds
     );
 
-    sock.ev.on(
-      "lid-mapping.update",
-      handleLidMappingUpdate
-    );
-
-    sock.ev.on(
-      "contacts.upsert",
-      contacts => {
-        try {
-          saveContacts(
-            contacts
-          );
-        } catch {}
-      }
-    );
-
-    sock.ev.on(
-      "contacts.update",
-      contacts => {
-        try {
-          saveContacts(
-            contacts
-          );
-        } catch {}
-      }
-    );
-
     /* =====================================================
        GROUP PARTICIPANTS
     ===================================================== */
@@ -4473,8 +4135,7 @@ async function startBot() {
             event?.action;
 
           const participants =
-            event?.participants ||
-            [];
+            event?.participants || [];
 
           if (!groupId) {
             return;
@@ -4489,9 +4150,7 @@ async function startBot() {
             return;
           }
 
-          if (
-            action === "add"
-          ) {
+          if (action === "add") {
             for (
               const participant of
                 participants
@@ -4502,18 +4161,9 @@ async function startBot() {
               );
             }
           }
-
-          if (
-            action === "promote" ||
-            action === "demote"
-          ) {
-            await cacheParticipants(
-              participants
-            );
-          }
         } catch (error) {
           console.log(
-            "❌ Group participant event error:",
+            "❌ Participant event error:",
             error?.message
           );
         }
@@ -4570,59 +4220,6 @@ async function startBot() {
             reconnecting = false;
             pairingRequested = false;
 
-            try {
-              const groups =
-                await sock.groupFetchAllParticipating();
-
-              for (
-                const group of Object.values(
-                  groups || {}
-                )
-              ) {
-                await cacheParticipants(
-                  group?.participants ||
-                    []
-                );
-              }
-
-              let adminGroupCount =
-                0;
-
-              for (
-                const group of Object.values(
-                  groups || {}
-                )
-              ) {
-                const groupId =
-                  group?.id;
-
-                if (!groupId) {
-                  continue;
-                }
-
-                const admin =
-                  await isBotAdminInGroup(
-                    groupId
-                  );
-
-                if (admin) {
-                  adminGroupCount++;
-                }
-              }
-
-              console.log(
-                `👑 Bot Admin Groups: ${adminGroupCount}`
-              );
-
-              await restoreGroupLocks();
-
-            } catch (error) {
-              console.log(
-                "⚠️ Group cache error:",
-                error?.message
-              );
-            }
-
             return;
           }
 
@@ -4655,9 +4252,7 @@ async function startBot() {
 
               setTimeout(
                 () => {
-                  reconnecting =
-                    false;
-
+                  reconnecting = false;
                   startBot();
                 },
                 3000
@@ -4684,16 +4279,13 @@ async function startBot() {
       }) => {
         try {
           if (
-            !Array.isArray(
-              messages
-            )
+            !Array.isArray(messages)
           ) {
             return;
           }
 
           for (
-            const message of
-              messages
+            const message of messages
           ) {
             try {
               if (!message) {
@@ -4751,6 +4343,23 @@ async function startBot() {
               const trimmedText =
                 text.trim();
 
+              /* =========================================
+                 CALCULATOR
+              ========================================= */
+
+              if (
+                isCalculatorMessage(
+                  trimmedText
+                )
+              ) {
+                await handleCalculator(
+                  remoteJid,
+                  trimmedText
+                );
+
+                continue;
+              }
+
               if (
                 !trimmedText.startsWith(
                   "/"
@@ -4765,16 +4374,14 @@ async function startBot() {
                 );
 
               const rawCommand =
-                parts.shift() ||
-                "";
+                parts.shift() || "";
 
               const command =
                 normalizeCommandName(
                   rawCommand
                 );
 
-              const args =
-                parts;
+              const args = parts;
 
               if (!command) {
                 continue;
@@ -4805,8 +4412,7 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                "গ্রুপ"
+                command === "গ্রুপ"
               ) {
                 const subCommand =
                   normalizeCommandName(
@@ -4814,22 +4420,19 @@ async function startBot() {
                   );
 
                 if (
-                  subCommand !==
-                  "বন্ধ"
+                  subCommand !== "বন্ধ"
                 ) {
                   await sock.sendMessage(
                     remoteJid,
                     {
                       text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-       🔒 *GROUP CONTROL*
-╰━━━━━━━━━━━━━━━━━━━━╯
+🔒 *GROUP CONTROL*
 
-❌ সঠিক ব্যবহার:
+সঠিক ব্যবহার:
 
 /গ্রুপ বন্ধ 2 মিনিট
 
-💡 উদাহরণ:
+উদাহরণ:
 
 /গ্রুপ বন্ধ 30 সেকেন্ড
 /গ্রুপ বন্ধ 2 মিনিট
@@ -4839,7 +4442,7 @@ async function startBot() {
 /গ্রুপ বন্ধ 1 মাস
 /গ্রুপ বন্ধ 1 বছর
 
-⏱️ একাধিক সময়:
+একাধিক সময়:
 
 /গ্রুপ বন্ধ 1 ঘণ্টা 30 মিনিট
 `
@@ -4860,24 +4463,12 @@ async function startBot() {
                     durationText
                   );
 
-                if (
-                  !durationMs
-                ) {
+                if (!durationMs) {
                   await sock.sendMessage(
                     remoteJid,
                     {
-                      text: `
-❌ সময় সঠিক নয়।
-
-উদাহরণ:
-
-/গ্রুপ বন্ধ 2 মিনিট
-/গ্রুপ বন্ধ 1 ঘণ্টা
-/গ্রুপ বন্ধ 2 দিন
-/গ্রুপ বন্ধ 1 সপ্তাহ
-/গ্রুপ বন্ধ 1 মাস
-/গ্রুপ বন্ধ 1 বছর
-`
+                      text:
+                        "❌ সময় সঠিক নয়। উদাহরণ: /গ্রুপ বন্ধ 2 মিনিট"
                     }
                   );
 
@@ -4897,8 +4488,7 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                "botoff"
+                command === "botoff"
               ) {
                 if (
                   !isBotEnabled(
@@ -4937,50 +4527,8 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                "boton"
+                command === "boton"
               ) {
-                const status =
-                  getGroupStatus(
-                    remoteJid
-                  );
-
-                if (
-                  typeof status.groupLockedUntil ===
-                    "number" &&
-                  status.groupLockedUntil >
-                    Date.now()
-                ) {
-                  await unlockGroup(
-                    remoteJid,
-                    "manual"
-                  );
-
-                  setBotStatus(
-                    remoteJid,
-                    true
-                  );
-
-                  await sock.sendMessage(
-                    remoteJid,
-                    {
-                      text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-        🟢 *GROUP OPEN*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-🔓 Group আবার OPEN করা হয়েছে।
-
-👥 এখন সবাই Message পাঠাতে পারবে।
-
-🤖 Bot Status: 🟢 ON
-`
-                    }
-                  );
-
-                  continue;
-                }
-
                 if (
                   isBotEnabled(
                     remoteJid
@@ -5033,8 +4581,7 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                  "mod" ||
+                command === "mod" ||
                 command ===
                   "moderation" ||
                 command ===
@@ -5052,8 +4599,7 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                "modon"
+                command === "modon"
               ) {
                 setModerationStatus(
                   remoteJid,
@@ -5082,21 +4628,8 @@ async function startBot() {
                 await sock.sendMessage(
                   remoteJid,
                   {
-                    text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-       🛡️ *MODERATION ON*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-🟢 Bad Word Filter: ON
-🟢 Link Protection: ON
-🟢 Duplicate Spam: ON
-🟢 Warning System: ON
-
-🚫 Member Remove: OFF
-🚫 Kick/Ban: OFF
-
-✅ Moderation System চালু হয়েছে।
-`
+                    text:
+                      "🛡️ *MODERATION ON*\n\n🟢 Bad Word\n🟢 Link Protection\n🟢 Duplicate Spam\n🟢 Warning System"
                   }
                 );
 
@@ -5108,8 +4641,7 @@ async function startBot() {
               ========================================= */
 
               if (
-                command ===
-                "modoff"
+                command === "modoff"
               ) {
                 setModerationStatus(
                   remoteJid,
@@ -5138,21 +4670,8 @@ async function startBot() {
                 await sock.sendMessage(
                   remoteJid,
                   {
-                    text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-       🛡️ *MODERATION OFF*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-🔴 Bad Word Filter: OFF
-🔴 Link Protection: OFF
-🔴 Duplicate Spam: OFF
-🔴 Warning System: OFF
-
-🚫 Member Remove: OFF
-🚫 Kick/Ban: OFF
-
-❌ Moderation System বন্ধ হয়েছে।
-`
+                    text:
+                      "🛡️ *MODERATION OFF*"
                   }
                 );
 
@@ -5168,8 +4687,7 @@ async function startBot() {
                 command === "off"
               ) {
                 const targetRaw =
-                  args[0] ||
-                  "";
+                  args[0] || "";
 
                 const target =
                   getCanonicalCommand(
@@ -5180,34 +4698,8 @@ async function startBot() {
                   await sock.sendMessage(
                     remoteJid,
                     {
-                      text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-      ⚙️ *COMMAND CONTROL*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-🔴 OFF:
-
-/off <command>
-
-🟢 ON:
-
-/on <command>
-
-💡 উদাহরণ:
-
-/off deal
-/on deal
-
-/off website
-/on website
-
-/off rules
-/on rules
-
-📊 Status:
-
-/mod
-`
+                      text:
+                        "⚙️ ব্যবহার:\n\n/off <command>\n/on <command>"
                     }
                   );
 
@@ -5238,128 +4730,34 @@ async function startBot() {
                   await sock.sendMessage(
                     remoteJid,
                     {
-                      text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-       ⚠️ *UNKNOWN COMMAND*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-❌ */${target}* নামে কোনো Command নেই।
-
-📋 Available Commands:
-
-${COMMAND_DEFINITIONS
-  .map(
-    item =>
-      `• ${item.command}`
-  )
-  .join("\n")}
-`
+                      text:
+                        `❌ /${target} নামে কোনো Command নেই।`
                     }
                   );
 
                   continue;
                 }
 
-                if (
-                  command ===
-                  "off"
-                ) {
-                  if (
-                    !isCommandEnabled(
-                      remoteJid,
-                      target
-                    )
-                  ) {
-                    await sock.sendMessage(
-                      remoteJid,
-                      {
-                        text:
-                          `🔴 */${target}* ইতোমধ্যে OFF আছে।`
-                      }
-                    );
+                const enable =
+                  command === "on";
 
-                    continue;
+                setCommandStatus(
+                  remoteJid,
+                  target,
+                  enable
+                );
+
+                await sock.sendMessage(
+                  remoteJid,
+                  {
+                    text:
+                      `${enable ? "🟢" : "🔴"} */${target}* ${
+                        enable ? "ON" : "OFF"
+                      } করা হয়েছে।`
                   }
+                );
 
-                  setCommandStatus(
-                    remoteJid,
-                    target,
-                    false
-                  );
-
-                  await sock.sendMessage(
-                    remoteJid,
-                    {
-                      text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-       🔴 *COMMAND OFF*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-⚙️ Command:
-*/${target}*
-
-❌ এখন থেকে এই Command
-কাজ করবে না।
-
-🟢 আবার চালু করতে:
-
-/on ${target}
-
-/mod দিয়ে OFF Command
-দেখতে পারবেন।
-`
-                    }
-                  );
-
-                  continue;
-                }
-
-                if (
-                  command ===
-                  "on"
-                ) {
-                  if (
-                    isCommandEnabled(
-                      remoteJid,
-                      target
-                    )
-                  ) {
-                    await sock.sendMessage(
-                      remoteJid,
-                      {
-                        text:
-                          `🟢 */${target}* ইতোমধ্যে ON আছে।`
-                      }
-                    );
-
-                    continue;
-                  }
-
-                  setCommandStatus(
-                    remoteJid,
-                    target,
-                    true
-                  );
-
-                  await sock.sendMessage(
-                    remoteJid,
-                    {
-                      text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-        🟢 *COMMAND ON*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-⚙️ Command:
-*/${target}*
-
-✅ এখন থেকে এই Command
-আবার কাজ করবে।
-`
-                    }
-                  );
-
-                  continue;
-                }
+                continue;
               }
 
               /* =========================================
@@ -5367,8 +4765,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                command ===
-                "cmdlist"
+                command === "cmdlist"
               ) {
                 await sendCommandList(
                   remoteJid
@@ -5378,7 +4775,7 @@ ${COMMAND_DEFINITIONS
               }
 
               /* =========================================
-                 BOT OFF
+                 BOT STATUS
               ========================================= */
 
               if (
@@ -5416,10 +4813,8 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                  "menu" ||
-                commandAlias ===
-                  "bot"
+                commandAlias === "menu" ||
+                commandAlias === "bot"
               ) {
                 await sendPublicMenu(
                   remoteJid
@@ -5433,8 +4828,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "rules"
+                commandAlias === "rules"
               ) {
                 await sock.sendMessage(
                   remoteJid,
@@ -5457,8 +4851,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "website"
+                commandAlias === "website"
               ) {
                 await sock.sendMessage(
                   remoteJid,
@@ -5481,8 +4874,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "deal"
+                commandAlias === "deal"
               ) {
                 await sendDealNotice(
                   remoteJid
@@ -5504,8 +4896,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "admin"
+                commandAlias === "admin"
               ) {
                 await sendAdminList(
                   remoteJid
@@ -5524,8 +4915,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "members"
+                commandAlias === "members"
               ) {
                 const metadata =
                   await sock.groupMetadata(
@@ -5539,13 +4929,8 @@ ${COMMAND_DEFINITIONS
                 await sock.sendMessage(
                   remoteJid,
                   {
-                    text: `
-╭━━━━━━━━━━━━━━━━━━━━╮
-        👥 *GROUP MEMBERS*
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-👥 *মোট Member:* ${participants.length} জন
-`
+                    text:
+                      `👥 *GROUP MEMBERS*\n\nমোট Member: ${participants.length} জন`
                   }
                 );
 
@@ -5574,35 +4959,10 @@ ${COMMAND_DEFINITIONS
                   metadata?.participants ||
                   [];
 
-                await cacheParticipants(
-                  participants
-                );
-
                 const admins =
                   participants.filter(
                     isAdminParticipant
                   );
-
-                const created =
-                  metadata?.creation
-                    ? new Date(
-                        Number(
-                          metadata.creation
-                        ) * 1000
-                      ).toLocaleString(
-                        "en-BD"
-                      )
-                    : "Unknown";
-
-                const moderation =
-                  getModerationStatus(
-                    remoteJid
-                  );
-
-                const lock =
-                  getGroupStatus(
-                    remoteJid
-                  ).groupLockedUntil;
 
                 await sock.sendMessage(
                   remoteJid,
@@ -5627,10 +4987,6 @@ ${COMMAND_DEFINITIONS
                       admins.length
                     }
 
-📅 *Created:* ${
-                      created
-                    }
-
 🤖 *Bot:* ${
                       isBotEnabled(
                         remoteJid
@@ -5638,40 +4994,6 @@ ${COMMAND_DEFINITIONS
                         ? "🟢 ON"
                         : "🔴 OFF"
                     }
-
-🔒 *Group:* ${
-                      typeof lock ===
-                        "number" &&
-                      lock > Date.now()
-                        ? "🔴 CLOSED"
-                        : "🟢 OPEN"
-                    }
-
-🛡️ *Bad Word:* ${
-                      moderation.badWords
-                        ? "🟢 ON"
-                        : "🔴 OFF"
-                    }
-
-🔗 *Link Protection:* ${
-                      moderation.links
-                        ? "🟢 ON"
-                        : "🔴 OFF"
-                    }
-
-🚨 *Duplicate Spam:* ${
-                      moderation.spam
-                        ? "🟢 ON"
-                        : "🔴 OFF"
-                    }
-
-⚠️ *Warning:* ${
-                      moderation.warnings
-                        ? "🟢 ON"
-                        : "🔴 OFF"
-                    }
-
-🚫 *Kick/Ban:* OFF
 
 🤍 *Powered by Piyas*
 `
@@ -5691,8 +5013,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "id"
+                commandAlias === "id"
               ) {
                 await sock.sendMessage(
                   remoteJid,
@@ -5715,8 +5036,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "ping"
+                commandAlias === "ping"
               ) {
                 const start =
                   Date.now();
@@ -5739,8 +5059,7 @@ ${COMMAND_DEFINITIONS
                   {
                     text:
                       `🏓 *PONG!*\n\n⚡ Response: ${ping}ms\n🤖 Bot: Online`,
-                    quoted:
-                      msg
+                    quoted: msg
                   }
                 );
 
@@ -5757,8 +5076,7 @@ ${COMMAND_DEFINITIONS
               ========================================= */
 
               if (
-                commandAlias ===
-                "piyas"
+                commandAlias === "piyas"
               ) {
                 await sock.sendMessage(
                   remoteJid,
@@ -5807,9 +5125,7 @@ ${COMMAND_DEFINITIONS
 
       setTimeout(
         () => {
-          reconnecting =
-            false;
-
+          reconnecting = false;
           startBot();
         },
         5000
