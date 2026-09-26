@@ -33,6 +33,10 @@ const PAIRING_NUMBER_FILE = "./pairing_number.txt";
 const BOT_STATUS_FILE = "./bot_status.json";
 const WARNING_FILE = "./warnings.json";
 
+/* New member join-date storage */
+const MEMBER_JOIN_FILE =
+  "./member_join_dates.json";
+
 const BOT_NAME = "Piyas Bot";
 
 const GROUP_LOCK_CHECK_INTERVAL =
@@ -221,6 +225,176 @@ function addWarning(
   saveWarnings();
 
   return groupWarnings[memberJid];
+}
+
+/* =========================================================
+   MEMBER JOIN DATE DATA
+========================================================= */
+
+let memberJoinDates = {};
+
+function loadMemberJoinDates() {
+  try {
+    if (!fs.existsSync(MEMBER_JOIN_FILE)) {
+      memberJoinDates = {};
+      return;
+    }
+
+    memberJoinDates =
+      JSON.parse(
+        fs.readFileSync(
+          MEMBER_JOIN_FILE,
+          "utf8"
+        )
+      ) || {};
+
+    console.log(
+      "📂 Member join data loaded."
+    );
+  } catch (error) {
+    console.log(
+      "⚠️ Member join data load error:",
+      error?.message
+    );
+
+    memberJoinDates = {};
+  }
+}
+
+function saveMemberJoinDates() {
+  try {
+    fs.writeFileSync(
+      MEMBER_JOIN_FILE,
+      JSON.stringify(
+        memberJoinDates,
+        null,
+        2
+      ),
+      "utf8"
+    );
+  } catch (error) {
+    console.log(
+      "⚠️ Member join data save error:",
+      error?.message
+    );
+  }
+}
+
+function getMemberJoinKey(jid) {
+  if (!jid) {
+    return null;
+  }
+
+  return String(jid).trim();
+}
+
+async function saveMemberJoinDate(
+  groupId,
+  participant
+) {
+  try {
+    if (
+      !groupId ||
+      !participant
+    ) {
+      return;
+    }
+
+    let memberJid =
+      await getPhoneJid(
+        participant
+      );
+
+    if (!memberJid) {
+      memberJid =
+        participant.id ||
+        participant.lid;
+    }
+
+    if (!memberJid) {
+      return;
+    }
+
+    const key =
+      `${groupId}:${getMemberJoinKey(memberJid)}`;
+
+    /*
+     * Do not overwrite an existing date.
+     * This keeps the original join time.
+     */
+    if (!memberJoinDates[key]) {
+      memberJoinDates[key] = {
+        groupId,
+        jid: memberJid,
+        joinedAt: Date.now()
+      };
+
+      saveMemberJoinDates();
+    }
+  } catch (error) {
+    console.log(
+      "⚠️ Save member join date error:",
+      error?.message
+    );
+  }
+}
+
+function getMemberJoinDate(
+  groupId,
+  participantJid
+) {
+  if (
+    !groupId ||
+    !participantJid
+  ) {
+    return null;
+  }
+
+  const key =
+    `${groupId}:${getMemberJoinKey(participantJid)}`;
+
+  return (
+    memberJoinDates[key] || null
+  );
+}
+
+function formatMemberJoinDate(
+  timestamp
+) {
+  if (!timestamp) {
+    return {
+      date: "তথ্য পাওয়া যায়নি",
+      time: "তথ্য পাওয়া যায়নি"
+    };
+  }
+
+  const date =
+    new Date(timestamp);
+
+  return {
+    date:
+      date.toLocaleDateString(
+        "en-GB",
+        {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+          timeZone: "Asia/Dhaka"
+        }
+      ),
+
+    time:
+      date.toLocaleTimeString(
+        "en-BD",
+        {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Dhaka"
+        }
+      )
+  };
 }
 
 /* =========================================================
@@ -2078,7 +2252,6 @@ async function isSenderAdmin(
     return false;
   }
 }
-
 /* =========================================================
    COPY BUTTON
 ========================================================= */
@@ -2536,6 +2709,7 @@ ${formattedResult}
     return false;
   }
 }
+
 /* =========================================================
    ADMIN PANEL
 ========================================================= */
@@ -2960,6 +3134,256 @@ const PIYAS_INFO = `
 `;
 
 /* =========================================================
+   MEMBER INFO BY /NAME
+========================================================= */
+
+function normalizeMemberSearchName(
+  text
+) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(
+      /[\u200B-\u200D\uFEFF]/g,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function sendMemberInfoByName(
+  remoteJid,
+  searchName
+) {
+  try {
+    if (
+      !searchName ||
+      !sock
+    ) {
+      return false;
+    }
+
+    const metadata =
+      await sock.groupMetadata(
+        remoteJid
+      );
+
+    const participants =
+      metadata?.participants || [];
+
+    await cacheParticipants(
+      participants
+    );
+
+    const query =
+      normalizeMemberSearchName(
+        searchName
+      );
+
+    if (!query) {
+      return false;
+    }
+
+    const matches =
+      participants.filter(
+        participant => {
+          const name =
+            normalizeMemberSearchName(
+              getDisplayName(
+                participant
+              )
+            );
+
+          return name.includes(query);
+        }
+      );
+
+    if (!matches.length) {
+      await sock.sendMessage(
+        remoteJid,
+        {
+          text: `
+╭━━━━━━━━━━━━━━━━━━╮
+      👤 *MEMBER INFO*
+╰━━━━━━━━━━━━━━━━━━╯
+
+❌ *"${searchName}"* নামে
+কোনো Member পাওয়া যায়নি।
+
+💡 সঠিক নাম লিখে আবার চেষ্টা করুন।
+
+🤍 *Piyas Bot*
+`
+        }
+      );
+
+      return true;
+    }
+
+    if (matches.length > 1) {
+      const lines = [];
+
+      let number = 1;
+
+      for (
+        const participant of matches
+      ) {
+        const name =
+          getDisplayName(
+            participant
+          );
+
+        lines.push(
+          `${number}️⃣ ${name}`
+        );
+
+        number++;
+      }
+
+      await sock.sendMessage(
+        remoteJid,
+        {
+          text: `
+╭━━━━━━━━━━━━━━━━━━╮
+      👤 *MEMBER SEARCH*
+╰━━━━━━━━━━━━━━━━━━╯
+
+একই নামে একাধিক Member পাওয়া গেছে:
+
+${lines.join("\n")}
+
+আরও নির্দিষ্ট নাম লিখুন।
+
+উদাহরণ:
+*/আল আমিন*
+
+🤍 *Piyas Bot*
+`
+        }
+      );
+
+      return true;
+    }
+
+    const member =
+      matches[0];
+
+    const name =
+      getDisplayName(member);
+
+    const phoneJid =
+      await getPhoneJid(member);
+
+    let phone =
+      "তথ্য পাওয়া যায়নি";
+
+    if (isPhoneJid(phoneJid)) {
+      phone =
+        phoneJid
+          .split("@")[0]
+          .replace(
+            /[^0-9]/g,
+            ""
+          );
+    }
+
+    let role =
+      "👤 Member";
+
+    if (
+      isOwnerParticipant(
+        member
+      )
+    ) {
+      role =
+        "⭐ Group Owner";
+    } else if (
+      isAdminParticipant(
+        member
+      )
+    ) {
+      role =
+        "👑 Admin";
+    }
+
+    let joinData = null;
+
+    if (phoneJid) {
+      joinData =
+        getMemberJoinDate(
+          remoteJid,
+          phoneJid
+        );
+    }
+
+    if (!joinData && member.id) {
+      joinData =
+        getMemberJoinDate(
+          remoteJid,
+          member.id
+        );
+    }
+
+    if (!joinData && member.lid) {
+      joinData =
+        getMemberJoinDate(
+          remoteJid,
+          member.lid
+        );
+    }
+
+    const joinInfo =
+      formatMemberJoinDate(
+        joinData?.joinedAt
+      );
+
+    const mention =
+      isPhoneJid(phoneJid)
+        ? [phoneJid]
+        : [];
+
+    const displayName =
+      isPhoneJid(phoneJid)
+        ? `@${phone}`
+        : name;
+
+    await sock.sendMessage(
+      remoteJid,
+      {
+        text: `
+╭━━━━━━━━━━━━━━━━━━╮
+       👤 *MEMBER INFO*
+╰━━━━━━━━━━━━━━━━━━╯
+
+👤 *Name:* ${displayName}
+
+📱 *Number:* ${phone}
+
+📅 *Joined:* ${joinInfo.date}
+
+⏰ *Join Time:* ${joinInfo.time}
+
+👑 *Role:* ${role}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🤍 *Piyas Bot*
+`,
+        mentions: mention
+      }
+    );
+
+    return true;
+  } catch (error) {
+    console.log(
+      "❌ Member info error:",
+      error?.message
+    );
+
+    return false;
+  }
+}
+
+/* =========================================================
    BOT ON / OFF
 ========================================================= */
 
@@ -3351,6 +3775,15 @@ async function sendWelcome(
       return;
     }
 
+    /*
+     * Save original join date/time.
+     * This only saves once for each member.
+     */
+    await saveMemberJoinDate(
+      groupId,
+      participant
+    );
+
     let metadata = null;
 
     try {
@@ -3736,7 +4169,7 @@ async function lockGroup(
 ❌ *Group বন্ধ করা যাচ্ছে না।*
 
 🤖 Bot-কে অবশ্যই Group Admin
-করে দিতে হবে।
+করে দিতে হবে。
 `
         }
       );
@@ -4150,11 +4583,20 @@ async function startBot() {
             return;
           }
 
+          /*
+           * Save join date/time BEFORE welcome.
+           * Only "add" events are treated as joins.
+           */
           if (action === "add") {
             for (
               const participant of
                 participants
             ) {
+              await saveMemberJoinDate(
+                groupId,
+                participant
+              );
+
               await sendWelcome(
                 groupId,
                 participant
@@ -4366,6 +4808,70 @@ async function startBot() {
                 )
               ) {
                 continue;
+              }
+
+              /* =========================================
+                 MEMBER INFO BY /NAME
+                 
+                 Example:
+                 /আল আমিন
+                 /মামুন
+                 /Piyas
+                 
+                 /piyas remains the old PIYAS
+                 command because it is a known command.
+              ========================================= */
+
+              const memberSearch =
+                trimmedText
+                  .slice(1)
+                  .trim();
+
+              if (memberSearch) {
+                const firstWord =
+                  memberSearch
+                    .split(/\s+/)[0];
+
+                const canonicalFirst =
+                  getCanonicalCommand(
+                    firstWord
+                  );
+
+                const isExistingCommand =
+                  isKnownCommand(
+                    canonicalFirst
+                  );
+
+                const isAdminCommand =
+                  ADMIN_ONLY_COMMANDS.includes(
+                    firstWord
+                  );
+
+                const isProtectedCommand =
+                  PROTECTED_COMMANDS.includes(
+                    firstWord
+                  );
+
+                const isGroupCommand =
+                  firstWord === "গ্রুপ";
+
+                /*
+                 * If it is NOT an existing bot command,
+                 * treat /name as Member Info search.
+                 */
+                if (
+                  !isExistingCommand &&
+                  !isAdminCommand &&
+                  !isProtectedCommand &&
+                  !isGroupCommand
+                ) {
+                  await sendMemberInfoByName(
+                    remoteJid,
+                    memberSearch
+                  );
+
+                  continue;
+                }
               }
 
               const parts =
@@ -5073,6 +5579,9 @@ async function startBot() {
 
               /* =========================================
                  PIYAS
+                 
+                 IMPORTANT:
+                 This remains unchanged.
               ========================================= */
 
               if (
@@ -5200,5 +5709,6 @@ process.on(
 
 loadBotStatus();
 loadWarnings();
+loadMemberJoinDates();
 
 startBot();
