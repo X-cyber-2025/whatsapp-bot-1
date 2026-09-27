@@ -32,11 +32,11 @@ const AUTH_DIR = "./auth_info";
 const PAIRING_NUMBER_FILE = "./pairing_number.txt";
 const BOT_STATUS_FILE = "./bot_status.json";
 const WARNING_FILE = "./warnings.json";
-const MEMBER_JOIN_FILE = "./member_join_dates.json";
 
 const BOT_NAME = "Piyas Bot";
 
-const GROUP_LOCK_CHECK_INTERVAL = 10 * 1000;
+const GROUP_LOCK_CHECK_INTERVAL =
+  10 * 1000;
 
 let sock = null;
 let reconnecting = false;
@@ -52,7 +52,8 @@ const lidToPhoneJid = new Map();
 
 const spamTracker = new Map();
 
-const SPAM_WINDOW_MS = 60 * 1000;
+const SPAM_WINDOW_MS =
+  60 * 1000;
 
 /* =========================================================
    LOGGER
@@ -144,7 +145,9 @@ function loadWarnings() {
         )
       ) || {};
 
-    console.log("📂 Warning data loaded.");
+    console.log(
+      "📂 Warning data loaded."
+    );
   } catch (error) {
     console.log(
       "⚠️ Warning data load error:",
@@ -218,164 +221,6 @@ function addWarning(
   saveWarnings();
 
   return groupWarnings[memberJid];
-}
-
-/* =========================================================
-   MEMBER JOIN DATE DATA
-========================================================= */
-
-let memberJoinDates = {};
-
-function loadMemberJoinDates() {
-  try {
-    if (!fs.existsSync(MEMBER_JOIN_FILE)) {
-      memberJoinDates = {};
-      return;
-    }
-
-    memberJoinDates =
-      JSON.parse(
-        fs.readFileSync(
-          MEMBER_JOIN_FILE,
-          "utf8"
-        )
-      ) || {};
-
-    console.log(
-      "📂 Member join data loaded."
-    );
-  } catch (error) {
-    console.log(
-      "⚠️ Member join data load error:",
-      error?.message
-    );
-
-    memberJoinDates = {};
-  }
-}
-
-function saveMemberJoinDates() {
-  try {
-    fs.writeFileSync(
-      MEMBER_JOIN_FILE,
-      JSON.stringify(
-        memberJoinDates,
-        null,
-        2
-      ),
-      "utf8"
-    );
-  } catch (error) {
-    console.log(
-      "⚠️ Member join data save error:",
-      error?.message
-    );
-  }
-}
-
-function getMemberJoinKey(jid) {
-  if (!jid) {
-    return null;
-  }
-
-  return String(jid).trim();
-}
-
-async function saveMemberJoinDate(
-  groupId,
-  participant
-) {
-  try {
-    if (!groupId || !participant) {
-      return;
-    }
-
-    let memberJid =
-      await getPhoneJid(
-        participant
-      );
-
-    if (!memberJid) {
-      memberJid =
-        participant.id ||
-        participant.lid;
-    }
-
-    if (!memberJid) {
-      return;
-    }
-
-    const key =
-      `${groupId}:${getMemberJoinKey(memberJid)}`;
-
-    if (!memberJoinDates[key]) {
-      memberJoinDates[key] = {
-        groupId,
-        jid: memberJid,
-        joinedAt: Date.now()
-      };
-
-      saveMemberJoinDates();
-    }
-  } catch (error) {
-    console.log(
-      "⚠️ Save member join date error:",
-      error?.message
-    );
-  }
-}
-
-function getMemberJoinDate(
-  groupId,
-  participantJid
-) {
-  if (!groupId || !participantJid) {
-    return null;
-  }
-
-  const key =
-    `${groupId}:${getMemberJoinKey(participantJid)}`;
-
-  return memberJoinDates[key] || null;
-}
-
-function formatMemberJoinDate(
-  timestamp
-) {
-  if (!timestamp) {
-    return {
-      date: "তথ্য পাওয়া যায়নি",
-      time: "তথ্য পাওয়া যায়নি"
-    };
-  }
-
-  const date =
-    new Date(timestamp);
-
-  return {
-    date:
-      date.toLocaleDateString(
-        "en-GB",
-        {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-          timeZone: "Asia/Dhaka"
-        }
-      ),
-
-    time:
-      date.toLocaleTimeString(
-        "en-BD",
-        {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: true,
-          timeZone: "Asia/Dhaka"
-        }
-      )
-  };
 }
 
 /* =========================================================
@@ -1452,37 +1297,9 @@ function cleanName(name) {
   return value.slice(0, 80);
 }
 
-/*
- * WhatsApp Display Name priority:
- *
- * 1. username
- * 2. notify
- * 3. name
- * 4. pushName
- * 5. verifiedName
- * 6. cached contact name
- * 7. phone / ID
- */
 function getDisplayName(
   participant = {}
 ) {
-  const directNames = [
-    participant.username,
-    participant.notify,
-    participant.name,
-    participant.pushName,
-    participant.verifiedName
-  ];
-
-  for (const value of directNames) {
-    const name =
-      cleanName(value);
-
-    if (name) {
-      return name;
-    }
-  }
-
   const ids = [
     participant.id,
     participant.lid,
@@ -1496,6 +1313,19 @@ function getDisplayName(
     if (cached) {
       return cached;
     }
+  }
+
+  const directName =
+    cleanName(
+      participant.username ||
+        participant.notify ||
+        participant.name ||
+        participant.verifiedName ||
+        participant.pushName
+    );
+
+  if (directName) {
+    return directName;
   }
 
   if (participant.phoneNumber) {
@@ -1638,10 +1468,6 @@ async function resolveLidToPhoneJid(lid) {
 function saveContacts(
   contacts = []
 ) {
-  if (!Array.isArray(contacts)) {
-    return;
-  }
-
   for (const contact of contacts) {
     if (!contact) {
       continue;
@@ -1698,8 +1524,8 @@ function saveContacts(
         contact.username ||
           contact.notify ||
           contact.name ||
-          contact.pushName ||
-          contact.verifiedName
+          contact.verifiedName ||
+          contact.pushName
       );
 
     if (name) {
@@ -1825,13 +1651,8 @@ async function getPhoneJid(
 async function cacheParticipants(
   participants = []
 ) {
-  if (!Array.isArray(participants)) {
-    return;
-  }
-
   for (
-    const participant of
-      participants
+    const participant of participants
   ) {
     if (!participant) {
       continue;
@@ -2257,6 +2078,7 @@ async function isSenderAdmin(
     return false;
   }
 }
+
 /* =========================================================
    COPY BUTTON
 ========================================================= */
@@ -2714,7 +2536,6 @@ ${formattedResult}
     return false;
   }
 }
-
 /* =========================================================
    ADMIN PANEL
 ========================================================= */
@@ -3139,315 +2960,6 @@ const PIYAS_INFO = `
 `;
 
 /* =========================================================
-   MEMBER SEARCH HELPERS
-========================================================= */
-
-function normalizeMemberSearchName(
-  text
-) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(
-      /[\u200B-\u200D\uFEFF]/g,
-      ""
-    )
-    .replace(
-      /^@+/,
-      ""
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-}
-
-function getSearchableMemberNames(
-  participant
-) {
-  const values = [
-    participant?.username,
-    participant?.notify,
-    participant?.name,
-    participant?.pushName,
-    participant?.verifiedName,
-    getDisplayName(participant)
-  ];
-
-  return [
-    ...new Set(
-      values
-        .filter(Boolean)
-        .map(
-          value =>
-            normalizeMemberSearchName(
-              value
-            )
-        )
-        .filter(Boolean)
-    )
-  ];
-}
-
-/* =========================================================
-   MEMBER INFO BY /NAME
-========================================================= */
-
-async function sendMemberInfoByName(
-  remoteJid,
-  searchName
-) {
-  try {
-    if (
-      !searchName ||
-      !sock
-    ) {
-      return false;
-    }
-
-    const metadata =
-      await sock.groupMetadata(
-        remoteJid
-      );
-
-    const participants =
-      metadata?.participants || [];
-
-    await cacheParticipants(
-      participants
-    );
-
-    let query =
-      normalizeMemberSearchName(
-        searchName
-      );
-
-    if (!query) {
-      return false;
-    }
-
-    /*
-     * Search by WhatsApp Display Name /
-     * User Name.
-     *
-     * Supports:
-     * /israt
-     * /Israt
-     * /israt jahan
-     * /@israt
-     * /israt123
-     */
-
-    const matches =
-      participants.filter(
-        participant => {
-          const possibleNames =
-            getSearchableMemberNames(
-              participant
-            );
-
-          return possibleNames.some(
-            name =>
-              name.includes(query)
-          );
-        }
-      );
-
-    if (!matches.length) {
-      await sock.sendMessage(
-        remoteJid,
-        {
-          text: `
-╭━━━━━━━━━━━━━━━━━━╮
-      👤 *MEMBER INFO*
-╰━━━━━━━━━━━━━━━━━━╯
-
-❌ *"${searchName}"* নামে
-কোনো Member পাওয়া যায়নি।
-
-💡 WhatsApp-এর Display Name /
-User Name অনুযায়ী নাম লিখে
-আবার চেষ্টা করুন।
-
-উদাহরণ:
-
-/israt
-/@israt
-/israt jahan
-
-🤍 *Piyas Bot*
-`
-        }
-      );
-
-      return true;
-    }
-
-    if (matches.length > 1) {
-      const lines = [];
-
-      let number = 1;
-
-      for (
-        const participant of matches
-      ) {
-        const name =
-          getDisplayName(
-            participant
-          );
-
-        lines.push(
-          `${number}️⃣ ${name}`
-        );
-
-        number++;
-      }
-
-      await sock.sendMessage(
-        remoteJid,
-        {
-          text: `
-╭━━━━━━━━━━━━━━━━━━╮
-      👤 *MEMBER SEARCH*
-╰━━━━━━━━━━━━━━━━━━╯
-
-একই নামে একাধিক Member পাওয়া গেছে:
-
-${lines.join("\n")}
-
-আরও নির্দিষ্ট নাম লিখুন।
-
-উদাহরণ:
-*/আল আমিন*
-
-🤍 *Piyas Bot*
-`
-        }
-      );
-
-      return true;
-    }
-
-    const member =
-      matches[0];
-
-    const name =
-      getDisplayName(member);
-
-    const phoneJid =
-      await getPhoneJid(member);
-
-    let phone =
-      "তথ্য পাওয়া যায়নি";
-
-    if (isPhoneJid(phoneJid)) {
-      phone =
-        phoneJid
-          .split("@")[0]
-          .replace(
-            /[^0-9]/g,
-            ""
-          );
-    }
-
-    let role =
-      "👤 Member";
-
-    if (
-      isOwnerParticipant(
-        member
-      )
-    ) {
-      role =
-        "⭐ Group Owner";
-    } else if (
-      isAdminParticipant(
-        member
-      )
-    ) {
-      role =
-        "👑 Admin";
-    }
-
-    let joinData = null;
-
-    if (phoneJid) {
-      joinData =
-        getMemberJoinDate(
-          remoteJid,
-          phoneJid
-        );
-    }
-
-    if (!joinData && member.id) {
-      joinData =
-        getMemberJoinDate(
-          remoteJid,
-          member.id
-        );
-    }
-
-    if (!joinData && member.lid) {
-      joinData =
-        getMemberJoinDate(
-          remoteJid,
-          member.lid
-        );
-    }
-
-    const joinInfo =
-      formatMemberJoinDate(
-        joinData?.joinedAt
-      );
-
-    const mention =
-      isPhoneJid(phoneJid)
-        ? [phoneJid]
-        : [];
-
-    const displayName =
-      isPhoneJid(phoneJid)
-        ? `@${phone}`
-        : name;
-
-    await sock.sendMessage(
-      remoteJid,
-      {
-        text: `
-╭━━━━━━━━━━━━━━━━━━╮
-       👤 *MEMBER INFO*
-╰━━━━━━━━━━━━━━━━━━╯
-
-👤 *Name:* ${displayName}
-
-📱 *Number:* ${phone}
-
-📅 *Joined:* ${joinInfo.date}
-
-⏰ *Join Time:* ${joinInfo.time}
-
-👑 *Role:* ${role}
-
-━━━━━━━━━━━━━━━━━━━━
-
-🤍 *Piyas Bot*
-`,
-        mentions: mention
-      }
-    );
-
-    return true;
-  } catch (error) {
-    console.log(
-      "❌ Member info error:",
-      error?.message
-    );
-
-    return false;
-  }
-}
-
-/* =========================================================
    BOT ON / OFF
 ========================================================= */
 
@@ -3838,11 +3350,6 @@ async function sendWelcome(
     ) {
       return;
     }
-
-    await saveMemberJoinDate(
-      groupId,
-      participant
-    );
 
     let metadata = null;
 
@@ -4614,43 +4121,6 @@ async function startBot() {
     );
 
     /* =====================================================
-       CONTACTS
-       Save WhatsApp Display Name / User Name
-    ===================================================== */
-
-    sock.ev.on(
-      "contacts.upsert",
-      contacts => {
-        try {
-          saveContacts(
-            contacts || []
-          );
-        } catch (error) {
-          console.log(
-            "⚠️ Contacts upsert error:",
-            error?.message
-          );
-        }
-      }
-    );
-
-    sock.ev.on(
-      "contacts.update",
-      contacts => {
-        try {
-          saveContacts(
-            contacts || []
-          );
-        } catch (error) {
-          console.log(
-            "⚠️ Contacts update error:",
-            error?.message
-          );
-        }
-      }
-    );
-
-    /* =====================================================
        GROUP PARTICIPANTS
     ===================================================== */
 
@@ -4685,11 +4155,6 @@ async function startBot() {
               const participant of
                 participants
             ) {
-              await saveMemberJoinDate(
-                groupId,
-                participant
-              );
-
               await sendWelcome(
                 groupId,
                 participant
@@ -4901,78 +4366,6 @@ async function startBot() {
                 )
               ) {
                 continue;
-              }
-
-              /* =========================================
-                 MEMBER INFO BY /NAME
-                 
-                 Examples:
-                 /israt
-                 /israt123
-                 /israt jahan
-                 /@israt
-
-                 /piyas remains the old PIYAS
-                 command.
-              ========================================= */
-
-              const memberSearch =
-                trimmedText
-                  .slice(1)
-                  .trim();
-
-              if (memberSearch) {
-                const firstWord =
-                  memberSearch
-                    .split(/\s+/)[0];
-
-                const canonicalFirst =
-                  getCanonicalCommand(
-                    firstWord
-                  );
-
-                const isExistingCommand =
-                  isKnownCommand(
-                    canonicalFirst
-                  );
-
-                const normalizedFirst =
-                  normalizeCommandName(
-                    firstWord
-                  );
-
-                const isAdminCommand =
-                  ADMIN_ONLY_COMMANDS.includes(
-                    normalizedFirst
-                  );
-
-                const isProtectedCommand =
-                  PROTECTED_COMMANDS.includes(
-                    normalizedFirst
-                  );
-
-                const isGroupCommand =
-                  normalizedFirst ===
-                  "গ্রুপ";
-
-                /*
-                 * If it is NOT an existing bot command,
-                 * treat /name as Member Info search.
-                 */
-
-                if (
-                  !isExistingCommand &&
-                  !isAdminCommand &&
-                  !isProtectedCommand &&
-                  !isGroupCommand
-                ) {
-                  await sendMemberInfoByName(
-                    remoteJid,
-                    memberSearch
-                  );
-
-                  continue;
-                }
               }
 
               const parts =
@@ -5680,9 +5073,6 @@ async function startBot() {
 
               /* =========================================
                  PIYAS
-                 
-                 IMPORTANT:
-                 /piyas remains unchanged.
               ========================================= */
 
               if (
@@ -5810,6 +5200,5 @@ process.on(
 
 loadBotStatus();
 loadWarnings();
-loadMemberJoinDates();
 
 startBot();
