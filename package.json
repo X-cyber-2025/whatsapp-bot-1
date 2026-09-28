@@ -1,9 +1,7 @@
 {
   "name": "piyas-ai-bot",
   "version": "1.0.0",
-  "description": "Piyas AI WhatsApp Group Bot",
   "type": "module",
-  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
@@ -11,6 +9,6 @@
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "@hapi/boom": "10.0.1",
     "pino": "9.0.0",
-    "@google/genai": "latest"
+    "@google/genai": "^2.24.0"
   }
 }
