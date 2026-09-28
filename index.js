@@ -54,7 +54,7 @@ const spamTracker = new Map();
 const SPAM_WINDOW_MS = 60 * 1000;
 
 /* =========================================================
-   NEW: RATE LIMIT MEMORY
+   RATE LIMIT MEMORY
 ========================================================= */
 
 const rateLimitTracker = new Map();
@@ -62,14 +62,14 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_COMMANDS = 3;
 
 /* =========================================================
-   NEW: ANTI-FORWARD MEMORY
+   ANTI-FORWARD MEMORY
 ========================================================= */
 
 const forwardTracker = new Map();
 const FORWARD_WINDOW_MS = 10 * 60 * 1000;
 
 /* =========================================================
-   NEW: MUTE MEMORY
+   MUTE MEMORY
 ========================================================= */
 
 let mutedUsers = {};
@@ -97,7 +97,6 @@ const MODERATION_DEFAULTS = {
 ========================================================= */
 
 const BAD_WORDS = [
-  // বাংলা গালি
   "সালা","শালা","সালি","সালী","শালি","ষালি","ষালী",
   "খাংকি","খাংকী","খানকি","খানকী","মাগি","মাগী",
   "বেসসা","বেশ্যা","বেশা","চোদা","চোদন","চুদ","চুদা",
@@ -117,8 +116,6 @@ const BAD_WORDS = [
   "কুলাঙ্গার","কুলাঙ্গারের","অপদার্থ","অপদার্থের",
   "নপুংসক","নপুংসকের","ভণ্ড","ভণ্ডের","প্রতারক","প্রতারকের",
   "চোর","চোরের","ডাকাত","ডাকাতের","জোচ্চোর","জোচ্চোরের",
-  
-  // ইংরেজি গালি
   "fuck","fucking","fucked","fucker","fuckers",
   "motherfucker","motherfucking","mf",
   "bitch","bitches","bitchy",
@@ -162,25 +159,20 @@ const BAD_WORDS = [
   "wtf","wth",
   "omfg","omg",
   "fml","fubar",
-  
-  // হিন্দি/উর্দু গালি
-  "madarchod","madarchod","bhenchod","bhenchodd",
+  "madarchod","bhenchod","bhenchodd",
   "behenchod","behanchod","bhosdike","bhosdi",
-  "chutiya","chutiya","chutiye","chutiyapa",
-  "gandu","gandu","gaandu","gaand",
+  "chutiya","chutiye","chutiyapa",
+  "gandu","gaandu","gaand",
   "harami","haramkhor","haramzada",
   "kutta","kutti","kutte","kutton",
   "suar","suvar","suwar",
   "randi","rand","randy",
   "loda","lode","laura","lauda",
-  "bhosda","bhosdi","bhosdika",
-  "lund","loda","lauda","laura",
-  "chinal","chinaal","chinal",
+  "bhosda","bhosdika",
+  "lund","chinal","chinaal",
   "kamina","kamine","kaminay",
   "badmash","badmashi","badzaat",
   "najaiz","najayaz","haram",
-  
-  // আরও বাংলা
   "বোকা","বোকার","বোকাচোদা","বোকাচোদ",
   "হাবলা","হাবলার","গবেট","গবেটের",
   "ল্যাংড়া","ল্যাংড়ার","কানা","কানার",
@@ -245,7 +237,7 @@ function addWarning(groupId, memberJid) {
 }
 
 /* =========================================================
-   NEW: MUTE DATA
+   MUTE DATA
 ========================================================= */
 
 function loadMuted() {
@@ -318,7 +310,7 @@ function removeMute(groupId, memberJid) {
 }
 
 /* =========================================================
-   BAD WORD CHECK (শক্তিশালী Regex)
+   BAD WORD CHECK
 ========================================================= */
 
 function normalizeForBadWordCheck(text) {
@@ -397,7 +389,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 /* =========================================================
-   NEW: RATE LIMIT
+   RATE LIMIT
 ========================================================= */
 
 function isRateLimited(groupId, memberJid) {
@@ -424,7 +416,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 /* =========================================================
-   NEW: ANTI-FORWARD
+   ANTI-FORWARD
 ========================================================= */
 
 function isForwardTooSoon(groupId, memberJid) {
@@ -565,10 +557,12 @@ const COMMAND_DEFINITIONS = [
 
 const COMMAND_ALIASES = { "ডিল": "deal" };
 
+/* 🔒 tagall এখন ADMIN ONLY */
 const ADMIN_ONLY_COMMANDS = [
   "adminpanel","cmdlist","on","off","boton","botoff",
   "mod","moderation","modstatus","modon","modoff","গ্রুপ",
-  "mute","unmute","mutelist"
+  "mute","unmute","mutelist",
+  "tagall"
 ];
 
 const PROTECTED_COMMANDS = [
@@ -689,7 +683,7 @@ async function sendModerationWarning(remoteJid, message, reason, warningCount) {
 }
 
 /* =========================================================
-   NEW: MUTE WARNING
+   MUTE WARNING
 ========================================================= */
 
 async function sendMuteWarning(remoteJid, memberJid, remainingMs) {
@@ -718,7 +712,7 @@ ${formatGroupDuration(remainingMs)}
 }
 
 /* =========================================================
-   MODERATE MESSAGE (Rate Limit + Anti-Forward + Mute)
+   MODERATE MESSAGE
 ========================================================= */
 
 async function moderateMessage(remoteJid, message, text) {
@@ -735,7 +729,7 @@ async function moderateMessage(remoteJid, message, text) {
     const memberJid = sender ? await getPhoneJid({ id: sender }) : null;
     const targetJid = memberJid || sender;
 
-    /* ---- MUTE CHECK ---- */
+    /* MUTE CHECK */
     if (targetJid && isMuted(remoteJid, targetJid)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -745,7 +739,7 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    /* ---- BAD WORD ---- */
+    /* BAD WORD */
     if (isModerationEnabled(remoteJid, "badWords")) {
       const badWord = containsBadWord(text);
       if (badWord) {
@@ -763,7 +757,7 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    /* ---- LINK ---- */
+    /* LINK */
     if (isModerationEnabled(remoteJid, "links") && containsLink(text)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -776,7 +770,7 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    /* ---- ANTI-FORWARD ---- */
+    /* ANTI-FORWARD */
     if (isModerationEnabled(remoteJid, "antiForward") && targetJid) {
       const isForward = message?.message?.extendedTextMessage?.contextInfo?.isForwarded ||
                        message?.message?.imageMessage?.contextInfo?.isForwarded ||
@@ -795,7 +789,7 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    /* ---- SPAM ---- */
+    /* SPAM */
     if (isModerationEnabled(remoteJid, "spam") && targetJid) {
       if (isDuplicateSpam(remoteJid, targetJid, text)) {
         const deleted = await deleteMessage(remoteJid, message);
@@ -1193,7 +1187,7 @@ async function sendCopyButtons(remoteJid, commands) {
 }
 
 /* =========================================================
-   PUBLIC MENU (Tag All যোগ)
+   PUBLIC MENU (tagall 🔒 Admin Only)
 ========================================================= */
 
 function buildMenuText(remoteJid) {
@@ -1212,7 +1206,7 @@ function buildMenuText(remoteJid) {
 │ 5️⃣ ${enabled("members") ? "/members" : "🔴 /members OFF"}
 │ 6️⃣ ${enabled("groupinfo") ? "/groupinfo" : "🔴 /groupinfo OFF"}
 │ 7️⃣ ${enabled("id") ? "/id" : "🔴 /id OFF"}
-│ 8️⃣ ${enabled("tagall") ? "/tagall <msg>" : "🔴 /tagall OFF"}
+│ 8️⃣ ${enabled("tagall") ? "/tagall <msg> 🔒" : "🔴 /tagall OFF"}
 ╰────────────────────
 
 ╭─❖ ⚙️ *UTILITY*
@@ -1243,6 +1237,8 @@ function buildMenuText(remoteJid) {
 │ 1️⃣6️⃣ /100/4
 ╰────────────────────
 
+━━━━━━━━━━━━━━━━━━━━
+🔒 = Admin Only
 ━━━━━━━━━━━━━━━━━━━━
 `;
 }
@@ -1779,7 +1775,7 @@ async function sendWelcome(groupId, participant) {
 }
 
 /* =========================================================
-   NEW: GOODBYE
+   GOODBYE
 ========================================================= */
 
 function getGoodbyeText(name, groupName) {
@@ -1958,7 +1954,7 @@ async function checkExpiredGroupLocks() {
 }
 
 /* =========================================================
-   NEW: MUTE EXPIRY CHECK
+   MUTE EXPIRY CHECK
 ========================================================= */
 
 async function checkExpiredMutes() {
@@ -2066,7 +2062,7 @@ function getMentionedJids(message) {
 }
 
 /* =========================================================
-   NEW: TAG ALL
+   TAG ALL (Admin Only)
 ========================================================= */
 
 async function handleTagAll(remoteJid, message, args) {
@@ -2100,7 +2096,7 @@ async function handleTagAll(remoteJid, message, args) {
 }
 
 /* =========================================================
-   NEW: MUTE COMMANDS
+   MUTE COMMANDS
 ========================================================= */
 
 async function handleMute(remoteJid, message, args) {
@@ -2233,7 +2229,7 @@ async function startBot() {
       try { saveContacts(contacts); } catch (e) {}
     });
 
-    /* GROUP PARTICIPANTS (Welcome + Goodbye) */
+    /* GROUP PARTICIPANTS */
     sock.ev.on("group-participants.update", async event => {
       try {
         const groupId = event?.id;
@@ -2337,7 +2333,7 @@ async function startBot() {
             const args = parts;
             if (!command) continue;
 
-            /* ADMIN CHECK */
+            /* ADMIN CHECK (tagall সহ) */
             if (ADMIN_ONLY_COMMANDS.includes(command)) {
               const admin = await isSenderAdmin(remoteJid, message);
               if (!admin) continue;
@@ -2505,7 +2501,7 @@ async function startBot() {
               continue;
             }
 
-            /* TAG ALL */
+            /* TAG ALL (Admin Only) */
             if (commandAlias === "tagall") {
               await handleTagAll(remoteJid, message, args);
               continue;
