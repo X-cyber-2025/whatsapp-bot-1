@@ -1,5 +1,5 @@
 {
-  "name": "piyas-ai-bot",
+  "name": "whatsapp-group-bot",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -9,6 +9,6 @@
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "@hapi/boom": "10.0.1",
     "pino": "9.0.0",
-    "@google/genai": "^2.24.0"
+    "dotenv": "^17.2.2"
   }
 }
