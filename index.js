@@ -557,12 +557,11 @@ const COMMAND_DEFINITIONS = [
 
 const COMMAND_ALIASES = { "ডিল": "deal" };
 
-/* 🔒 tagall এখন ADMIN ONLY */
+/* 🔒 Admin Only Commands (tagall + mute + unmute + mutelist সহ) */
 const ADMIN_ONLY_COMMANDS = [
   "adminpanel","cmdlist","on","off","boton","botoff",
   "mod","moderation","modstatus","modon","modoff","গ্রুপ",
-  "mute","unmute","mutelist",
-  "tagall"
+  "tagall","mute","unmute","mutelist"
 ];
 
 const PROTECTED_COMMANDS = [
@@ -729,7 +728,6 @@ async function moderateMessage(remoteJid, message, text) {
     const memberJid = sender ? await getPhoneJid({ id: sender }) : null;
     const targetJid = memberJid || sender;
 
-    /* MUTE CHECK */
     if (targetJid && isMuted(remoteJid, targetJid)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -739,7 +737,6 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    /* BAD WORD */
     if (isModerationEnabled(remoteJid, "badWords")) {
       const badWord = containsBadWord(text);
       if (badWord) {
@@ -757,7 +754,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    /* LINK */
     if (isModerationEnabled(remoteJid, "links") && containsLink(text)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -770,7 +766,6 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    /* ANTI-FORWARD */
     if (isModerationEnabled(remoteJid, "antiForward") && targetJid) {
       const isForward = message?.message?.extendedTextMessage?.contextInfo?.isForwarded ||
                        message?.message?.imageMessage?.contextInfo?.isForwarded ||
@@ -789,7 +784,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    /* SPAM */
     if (isModerationEnabled(remoteJid, "spam") && targetJid) {
       if (isDuplicateSpam(remoteJid, targetJid, text)) {
         const deleted = await deleteMessage(remoteJid, message);
@@ -1358,7 +1352,7 @@ ${commandStatus}
 │ 🚫 Kick/Ban: DISABLED
 ╰────────────────────
 
-╭─❖ 🔇 *MUTE CONTROL*
+╭─❖ 🔇 *MUTE CONTROL* 🔒
 │ /mute @user 10m
 │ /unmute @user
 │ /mutelist
@@ -1403,7 +1397,8 @@ async function sendCommandList(remoteJid) {
   const disabled = getGroupStatus(remoteJid).disabledCommands || [];
   const commandLines = COMMAND_DEFINITIONS.map(item => {
     const enabled = !disabled.includes(item.key);
-    return `${enabled ? "🟢 ON " : "🔴 OFF"} ${item.command}`;
+    const isAdminOnly = ADMIN_ONLY_COMMANDS.includes(item.key);
+    return `${enabled ? "🟢 ON " : "🔴 OFF"} ${item.command}${isAdminOnly ? " 🔒" : ""}`;
   });
   const moderation = getModerationStatus(remoteJid);
   const onCount = COMMAND_DEFINITIONS.filter(item => !disabled.includes(item.key)).length;
@@ -1420,6 +1415,7 @@ ${commandLines.join("\n")}
 ━━━━━━━━━━━━━━━━━━━━
 🟢 ON: ${onCount}
 🔴 OFF: ${offCount}
+🔒 = Admin Only
 ━━━━━━━━━━━━━━━━━━━━
 
 🤖 BOT: ${isBotEnabled(remoteJid) ? "🟢 ON" : "🔴 OFF"}
@@ -2096,7 +2092,7 @@ async function handleTagAll(remoteJid, message, args) {
 }
 
 /* =========================================================
-   MUTE COMMANDS
+   MUTE COMMANDS (Admin Only)
 ========================================================= */
 
 async function handleMute(remoteJid, message, args) {
@@ -2104,7 +2100,7 @@ async function handleMute(remoteJid, message, args) {
     const mentioned = getMentionedJids(message);
     if (!mentioned.length) {
       await sock.sendMessage(remoteJid, {
-        text: `🔇 *MUTE SYSTEM*\n\nব্যবহার:\n/mute @user 10m\n/mute @user 2h\n/mute @user 1d\n/mute @user 1h 30m\n/mute @user 30s\n\n💡 সময় লিখুন: s, m, h, d, w, y`
+        text: `🔇 *MUTE SYSTEM* 🔒\n\n*শুধু Admin ব্যবহার করতে পারবে।*\n\nব্যবহার:\n/mute @user 10m\n/mute @user 2h\n/mute @user 1d\n/mute @user 1h 30m\n/mute @user 30s\n\n💡 সময় লিখুন: s, m, h, d, w, y`
       });
       return;
     }
@@ -2333,10 +2329,18 @@ async function startBot() {
             const args = parts;
             if (!command) continue;
 
-            /* ADMIN CHECK (tagall সহ) */
+            /* ADMIN CHECK (tagall + mute + unmute + mutelist সহ) */
             if (ADMIN_ONLY_COMMANDS.includes(command)) {
               const admin = await isSenderAdmin(remoteJid, message);
-              if (!admin) continue;
+              if (!admin) {
+                /* Mute, Unmute, Mutelist — সাধারণ মেম্বারকে জানানো */
+                if (command === "mute" || command === "unmute" || command === "mutelist") {
+                  await sock.sendMessage(remoteJid, {
+                    text: `❌ *ADMIN ONLY* 🔒\n\nএই Command শুধুমাত্র Group Admin/Owner ব্যবহার করতে পারবেন।`
+                  });
+                }
+                continue;
+              }
             }
 
             /* GROUP CONTROL */
