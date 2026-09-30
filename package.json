@@ -1,16 +1,14 @@
 {
-  "name": "piyas-bot",
+  "name": "whatsapp-group-bot",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.9",
-    "dotenv": "^16.4.5",
-    "pino": "^9.5.0"
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "@hapi/boom": "10.0.1",
+    "pino": "9.0.0",
+    "dotenv": "^17.2.2"
   }
 }
