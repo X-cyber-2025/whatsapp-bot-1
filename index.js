@@ -824,7 +824,7 @@ async function getAIReply(groupId, userMessage, userName) {
 }
 
 /* =========================================================
-   MODERATE MESSAGE
+   MODERATE MESSAGE (শুধু বট অ্যাডমিন থাকলে কাজ করবে)
 ========================================================= */
 
 async function moderateMessage(remoteJid, message, text) {
@@ -832,10 +832,17 @@ async function moderateMessage(remoteJid, message, text) {
     if (!remoteJid || !message || !text) return false;
     if (!isBotEnabled(remoteJid)) return false;
 
+    // ✅ নতুন লজিক: বট অ্যাডমিন না থাকলে মডারেশন স্কিপ করবে
+    const botIsAdmin = await isBotAdminInGroup(remoteJid);
+    if (!botIsAdmin) {
+      return false; // বট অ্যাডমিন না থাকলে ডিলিট/মডারেশন হবে না
+    }
+
     const sender = message?.key?.participant;
     const memberJid = sender ? await getPhoneJid({ id: sender }) : null;
     const targetJid = memberJid || sender;
 
+    // মিউট চেক
     if (targetJid && isMuted(remoteJid, targetJid)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -845,11 +852,13 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
+    // অ্যাডমিনের মেসেজ স্কিপ
     if (sender) {
       const admin = await isSenderAdmin(remoteJid, message);
       if (admin) return false;
     }
 
+    // খারাপ শব্দ
     if (isModerationEnabled(remoteJid, "badWords")) {
       const badWord = containsBadWord(text);
       if (badWord) {
@@ -867,6 +876,7 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
+    // লিংক
     if (isModerationEnabled(remoteJid, "links") && containsLink(text)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -879,6 +889,7 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
+    // অ্যান্টি-ফরওয়ার্ড
     if (isModerationEnabled(remoteJid, "antiForward") && targetJid) {
       const isForward = message?.message?.extendedTextMessage?.contextInfo?.isForwarded ||
                        message?.message?.imageMessage?.contextInfo?.isForwarded ||
@@ -897,6 +908,7 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
+    // স্প্যাম
     if (isModerationEnabled(remoteJid, "spam") && targetJid) {
       if (isDuplicateSpam(remoteJid, targetJid, text)) {
         const deleted = await deleteMessage(remoteJid, message);
@@ -1198,11 +1210,6 @@ async function isBotAdminInGroup(groupId) {
   }
 }
 
-async function isGroupAllowed(groupId) {
-  if (!groupId || !groupId.endsWith("@g.us")) return false;
-  return await isBotAdminInGroup(groupId);
-}
-
 /* =========================================================
    SENDER ADMIN
 ========================================================= */
@@ -1435,6 +1442,8 @@ async function sendAdminPanel(remoteJid) {
       ? `🔒 Group Closed\n⏰ ${new Date(lock).toLocaleString("en-BD")}`
       : "🔓 Group Open";
 
+    const botIsAdmin = await isBotAdminInGroup(remoteJid);
+
     const text = `
 ╭━━━━━━━━━━━━━━━━━━━━╮
        👑 *ADMIN PANEL*
@@ -1445,6 +1454,7 @@ async function sendAdminPanel(remoteJid) {
 ╭─❖ 🤖 *BOT STATUS*
 │ ${isBotEnabled(remoteJid) ? "🟢 Bot: ON" : "🔴 Bot: OFF"}
 │ ${isAIEnabled(remoteJid) ? "🟢 AI: ON" : "🔴 AI: OFF"}
+│ ${botIsAdmin ? "🛡️ Moderation: Active" : "⚠️ Moderation: Inactive (Bot not Admin)"}
 │ 📦 Model: ${AI_MODEL}
 ╰────────────────────
 
@@ -2264,7 +2274,7 @@ async function startBot() {
         const action = event?.action;
         const participants = event?.participants || [];
         if (!groupId) return;
-        const botIsAdmin = await isGroupAllowed(groupId);
+        const botIsAdmin = await isBotAdminInGroup(groupId);
         if (!botIsAdmin) return;
 
         if (action === "add") {
@@ -2329,12 +2339,13 @@ async function startBot() {
             const remoteJid = message.key?.remoteJid;
             if (!remoteJid || !remoteJid.endsWith("@g.us")) continue;
 
-            const botIsAdmin = await isGroupAllowed(remoteJid);
-            if (!botIsAdmin) continue;
+            // ✅ বট এখানে আর isGroupAllowed চেক করবে না, শুধু গ্রুপ আইডি থাকলেই কাজ করবে
+            // মডারেশন ফাংশনের ভেতরে বট অ্যাডমিন চেক করা হবে
 
             const text = getMessageText(message);
             if (!text) continue;
 
+            // মডারেশন (বট অ্যাডমিন থাকলে কাজ করবে, না থাকলে স্কিপ করবে)
             const moderated = await moderateMessage(remoteJid, message, text);
             if (moderated) continue;
 
@@ -2344,10 +2355,10 @@ async function startBot() {
             const botJid = getBotPhoneJid();
             const mentioned = getMentionedJids(message);
             const textLower = trimmedText.toLowerCase();
-            
-            // বটকে মেনশন করা হয়েছে কি না (ফোন নাম্বার বা LID JID উভয় ভাবেই চেক)
-            const botMentioned = botJid && mentioned.some(jid => 
-              jid === botJid || 
+
+            // বটকে মেনশন করা হয়েছে কি না (ফোন নাম্বার বা LID JID উভয় ভাবেই চেক)
+            const botMentioned = botJid && mentioned.some(jid =>
+              jid === botJid ||
               (jid.includes("@lid") && botJid.includes(jid.split("@")[0]))
             );
 
@@ -2373,7 +2384,7 @@ async function startBot() {
                 .replace(/^\/ai\s+/i, "")
                 .replace(/^@ai\s+/i, "");
 
-              // মেনশন টেক্সট রিমুভ করা (নাম্বার এবং LID উভয়ের জন্য)
+              // মেনশন টেক্সট রিমুভ করা (নাম্বার এবং LID উভয়ের জন্য)
               if (botJid) {
                 const botNumber = botJid.split("@")[0];
                 question = question.replace(new RegExp(`@${botNumber}`, "gi"), "").trim();
