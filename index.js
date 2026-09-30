@@ -23,8 +23,7 @@ const PORT = Number(process.env.PORT || 3000);
 const PHONE_NUMBER = (process.env.PHONE_NUMBER || "")
   .replace(/[^0-9]/g, "");
 
-const WEBSITE_URL =
-  "https://x-cyber-2025.github.io/X-cyber.web/";
+const WEBSITE_URL = "https://x-cyber-2025.github.io/X-cyber.web/";
 
 const BACKUP_GROUP_URL =
   "https://chat.whatsapp.com/KsIJqeOdSTVC2FBIuWCvlN?s=cl&p=a&mlu=4&ilr=4";
@@ -49,7 +48,7 @@ const contactPhoneJids = new Map();
 const lidToPhoneJid = new Map();
 
 /* =========================================================
-   GEMINI AI SETUP  👈 এখানে আপনার Key পড়া হবে
+   GEMINI AI SETUP
 ========================================================= */
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -753,7 +752,7 @@ async function sendModerationWarning(remoteJid, message, reason, warningCount) {
 }
 
 /* =========================================================
-   MUTE WARNING (শুধু মিউট হওয়া মেম্বার দেখবে)
+   MUTE WARNING
 ========================================================= */
 
 async function sendMuteWarning(remoteJid, memberJid, remainingMs) {
@@ -2341,12 +2340,20 @@ async function startBot() {
 
             const trimmedText = text.trim();
 
-            /* 🤖 AI AUTO REPLY */
+            /* 🤖 AI AUTO REPLY - FIXED LOGIC */
             const botJid = getBotPhoneJid();
             const mentioned = getMentionedJids(message);
-            const botMentioned = botJid && mentioned.includes(botJid);
-            const isAICommand = trimmedText.toLowerCase().startsWith("/ai ");
-            const isAIMention = trimmedText.toLowerCase().startsWith("@ai ");
+            const textLower = trimmedText.toLowerCase();
+            
+            // বটকে মেনশন করা হয়েছে কি না (ফোন নাম্বার বা LID JID উভয় ভাবেই চেক)
+            const botMentioned = botJid && mentioned.some(jid => 
+              jid === botJid || 
+              (jid.includes("@lid") && botJid.includes(jid.split("@")[0]))
+            );
+
+            // AI কমান্ড ডিটেকশন
+            const isAICommand = textLower.startsWith("/ai ") || textLower === "/ai";
+            const isAIMention = textLower.startsWith("@ai ") || textLower === "@ai";
 
             if ((botMentioned || isAICommand || isAIMention) && isBotEnabled(remoteJid) && isAIEnabled(remoteJid)) {
               const sender = message.key.participant;
@@ -2361,11 +2368,16 @@ async function startBot() {
                 continue;
               }
 
+              // প্রশ্ন বের করা
               let question = trimmedText
                 .replace(/^\/ai\s+/i, "")
-                .replace(/^@ai\s+/i, "")
-                .replace(new RegExp(`@${botJid?.split("@")[0]}`, "gi"), "")
-                .trim();
+                .replace(/^@ai\s+/i, "");
+
+              // মেনশন টেক্সট রিমুভ করা (নাম্বার এবং LID উভয়ের জন্য)
+              if (botJid) {
+                const botNumber = botJid.split("@")[0];
+                question = question.replace(new RegExp(`@${botNumber}`, "gi"), "").trim();
+              }
 
               if (!question) {
                 await sock.sendMessage(remoteJid, {
