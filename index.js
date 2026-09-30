@@ -866,6 +866,7 @@ async function isSenderAdmin(remoteJid, message) {
     return isAdminParticipant(s);
   } catch { return false; }
 }
+
 function makeCopyButton(cmd) {
   return {
     name: "cta_copy",
@@ -1369,3 +1370,410 @@ async function handleMuteList(remoteJid) {
     });
   } catch {}
 }
+
+async function startBot() {
+  try {
+    let authState = await useMultiFileAuthState(AUTH_DIR);
+    let { state, saveCreds } = authState;
+
+    const currPhone = getCredentialPhoneNumber(state.creds);
+    const changed = PHONE_NUMBER && state.creds.registered &&
+      currPhone && currPhone !== PHONE_NUMBER;
+
+    if (changed) {
+      await resetAuthForNumberChange();
+      pairingRequested = false;
+      authState = await useMultiFileAuthState(AUTH_DIR);
+      state = authState.state;
+      saveCreds = authState.saveCreds;
+    }
+
+    sock = makeWASocket({
+      auth: state,
+      logger,
+      browser: Browsers.ubuntu("Chrome"),
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      generateHighQualityLinkPreview: false,
+      printQRInTerminal: false
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("contacts.upsert", c => { try { saveContacts(c); } catch {} });
+    sock.ev.on("contacts.update", c => { try { saveContacts(c); } catch {} });
+
+    sock.ev.on("group-participants.update", async event => {
+      try {
+        const g = event?.id;
+        const a = event?.action;
+        const p = event?.participants || [];
+        if (!g) return;
+        if (!await isBotAdminInGroup(g)) return;
+        if (a === "add") for (const x of p) await sendWelcome(g, x);
+        if (a === "remove") for (const x of p) await sendGoodbye(g, x);
+      } catch {}
+    });
+
+    sock.ev.on("connection.update", async upd => {
+      try {
+        const { connection, lastDisconnect } = upd;
+        if (connection === "connecting") {
+          console.log("🔄 Connecting...");
+          if (PHONE_NUMBER && !state.creds.registered) {
+            await generatePairingCode(state);
+          }
+        }
+        if (connection === "open") {
+          console.log("━━━━━━━━━━━━━━━━━━━━━━");
+          console.log(`✅ ${AI_NAME} Bot Connected!`);
+          console.log("━━━━━━━━━━━━━━━━━━━━━━");
+          reconnecting = false;
+          pairingRequested = false;
+          return;
+        }
+        if (connection === "close") {
+          const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
+          const reconn = code !== DisconnectReason.loggedOut;
+          console.log(`❌ Closed. Code: ${code}`);
+          sock = null;
+          pairingRequested = false;
+          if (reconn && !reconnecting) {
+            reconnecting = true;
+            setTimeout(() => { reconnecting = false; startBot(); }, 3000);
+          }
+        }
+      } catch {}
+    });
+
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      try {
+        if (!Array.isArray(messages)) return;
+
+        for (const message of messages) {
+          try {
+            if (!message || message.key?.fromMe) continue;
+            const remoteJid = message.key?.remoteJid;
+            if (!remoteJid || !remoteJid.endsWith("@g.us")) continue;
+
+            const text = getMessageText(message);
+            if (!text) continue;
+
+            const mod = await moderateMessage(remoteJid, message, text);
+            if (mod) continue;
+
+            const trimmed = text.trim();
+
+            const botJid = getBotPhoneJid();
+            const botLid = sock?.user?.id;
+            const mentioned = getMentionedJids(message);
+
+            const botMentioned = mentioned.some(j =>
+              (botJid && j === botJid) ||
+              (botLid && j === botLid) ||
+              (botJid && j.includes(botJid.split("@")[0]))
+            );
+
+            const isAI = /^\/ai(\s|$)/i.test(trimmed);
+            const isAIMen = /^@ai(\s|$)/i.test(trimmed);
+            const isStory = /^\/(story|গল্প)(\s|$)/i.test(trimmed);
+            const isSong = /^\/(song|গান)(\s|$)/i.test(trimmed);
+            const isPost = /^\/(post|পোস্ট)(\s|$)/i.test(trimmed);
+            const isPoem = /^\/(poem|কবিতা)(\s|$)/i.test(trimmed);
+            const isJoke = /^\/joke(\s|$)/i.test(trimmed);
+            const isHelp = /^\/aihelp(\s|$)/i.test(trimmed);
+            const isClear = /^\/clear(\s|$)/i.test(trimmed);
+
+            if (isHelp && isBotEnabled(remoteJid)) {
+              await sendAIHelp(remoteJid);
+              continue;
+            }
+
+            if (isClear && isBotEnabled(remoteJid)) {
+              const s = message.key.participant;
+              const pj = await getPhoneJid({ id: s });
+              if (pj) clearConversation(remoteJid, pj);
+              await sock.sendMessage(remoteJid, {
+                text: `🧹 *Memory Cleared*\n\n${AI_NAME} আগের কথা ভুলে গেছেন।`,
+                quoted: message
+              });
+              continue;
+            }
+
+            const wants = botMentioned || isAI || isAIMen ||
+              isStory || isSong || isPost || isPoem || isJoke;
+
+            if (wants && isBotEnabled(remoteJid) && isAIEnabled(remoteJid)) {
+              if (!genAI) {
+                await sock.sendMessage(remoteJid, {
+                  text: "❌ AI Key নেই।",
+                  quoted: message
+                });
+                continue;
+              }
+
+              const s = message.key.participant;
+              const pj = await getPhoneJid({ id: s });
+              const name = contactNames.get(pj) || "User";
+
+              if (pj && isAIRateLimited(pj)) {
+                await sock.sendMessage(remoteJid, {
+                  text: `⏳ *একটু অপেক্ষা করুন...*\n\n৩০ সেকেন্ড পর আবার।`,
+                  quoted: message
+                });
+                continue;
+              }
+
+              const mode = detectAIMode(trimmed);
+              let q = stripAIPrefix(trimmed);
+
+              if (botJid) {
+                const bn = botJid.split("@")[0];
+                q = q.replace(new RegExp(`@${bn}`, "gi"), "").trim();
+              }
+              if (botLid) {
+                const ln = String(botLid).split("@")[0].split(":")[0];
+                q = q.replace(new RegExp(`@${ln}`, "gi"), "").trim();
+              }
+              if (pj) {
+                const pn = pj.split("@")[0];
+                q = q.replace(new RegExp(`@${pn}`, "gi"), "").trim();
+              }
+              q = q.replace(/\s+/g, " ").trim();
+
+              if (!q && mode === "chat") {
+                await sock.sendMessage(remoteJid, {
+                  text: `❓ কী জানতে চান?\n\n/ai বাংলাদেশের রাজধানী?\n/story ছোট মেয়ে\n/song ভালোবাসা`,
+                  quoted: message
+                });
+                continue;
+              }
+
+              if (mode !== "chat" || q.length > 30) {
+                const emoji = { story:"📝", song:"🎵", post:"📢", poem:"✍️", joke:"😄", chat:"🤔" }[mode];
+                await sock.sendMessage(remoteJid, {
+                  text: `${emoji} *${AI_NAME} ভাবছেন...*`,
+                  quoted: message
+                });
+              }
+
+              const reply = await getAIReply(remoteJid, pj || s, q, name, mode);
+
+              if (reply) {
+                const header = {
+                  story: `📝 *${AI_NAME} — গল্প*`,
+                  song: `🎵 *${AI_NAME} — গান*`,
+                  post: `📢 *${AI_NAME} — পোস্ট*`,
+                  poem: `✍️ *${AI_NAME} — কবিতা*`,
+                  joke: `😄 *${AI_NAME} — কৌতুক*`,
+                  chat: `🤖 *${AI_NAME}*`
+                }[mode];
+
+                await sock.sendMessage(remoteJid, {
+                  text: `${header}\n\n${reply}\n\n━━━━━━━━━━━━━━━\n🤖 By *${AI_CREATOR}*`,
+                  quoted: message
+                });
+              } else {
+                await sock.sendMessage(remoteJid, {
+                  text: `❌ উত্তর দিতে পারছি না।`,
+                  quoted: message
+                });
+              }
+              continue;
+            }
+
+            if (isCalculatorMessage(trimmed)) {
+              await handleCalculator(remoteJid, trimmed);
+              continue;
+            }
+
+            if (!trimmed.startsWith("/")) continue;
+
+            const parts = trimmed.split(/\s+/);
+            const rawCmd = parts.shift() || "";
+            const command = normalizeCommandName(rawCmd);
+            const args = parts;
+            if (!command) continue;
+
+            if (ADMIN_ONLY_COMMANDS.includes(command)) {
+              const a = await isSenderAdmin(remoteJid, message);
+              if (!a) {
+                if (["mute","unmute","mutelist","aion","aioff"].includes(command)) {
+                  await sock.sendMessage(remoteJid, { text: `❌ *ADMIN ONLY* 🔒` });
+                }
+                continue;
+              }
+            }
+
+            if (command === "গ্রুপ") {
+              const sub = normalizeCommandName(args[0]);
+              if (sub !== "বন্ধ") {
+                await sock.sendMessage(remoteJid, { text: `🔒 /গ্রুপ বন্ধ 2 মিনিট` });
+                continue;
+              }
+              const d = parseGroupDuration(args.slice(1).join(" ").trim());
+              if (!d) {
+                await sock.sendMessage(remoteJid, { text: "❌ সময় সঠিক নয়।" });
+                continue;
+              }
+              await lockGroup(remoteJid, d);
+              continue;
+            }
+
+            if (command === "aion") {
+              setAIStatus(remoteJid, true);
+              await sock.sendMessage(remoteJid, { text: `🤖 *${AI_NAME} ON* ✅` });
+              continue;
+            }
+            if (command === "aioff") {
+              setAIStatus(remoteJid, false);
+              await sock.sendMessage(remoteJid, { text: `🤖 *${AI_NAME} OFF*` });
+              continue;
+            }
+            if (command === "botoff") {
+              if (!isBotEnabled(remoteJid)) {
+                await sock.sendMessage(remoteJid, { text: BOT_ALREADY_OFF_TEXT });
+                continue;
+              }
+              setBotStatus(remoteJid, false);
+              await sock.sendMessage(remoteJid, { text: BOT_OFF_TEXT });
+              continue;
+            }
+            if (command === "boton") {
+              if (isBotEnabled(remoteJid)) {
+                await sock.sendMessage(remoteJid, { text: BOT_ALREADY_ON_TEXT });
+                continue;
+              }
+              setBotStatus(remoteJid, true);
+              await sock.sendMessage(remoteJid, { text: BOT_ON_TEXT });
+              continue;
+            }
+            if (command === "adminpanel") {
+              await sendAdminPanel(remoteJid);
+              continue;
+            }
+            if (["mod","moderation","modstatus"].includes(command)) {
+              const m = getModerationStatus(remoteJid);
+              await sock.sendMessage(remoteJid, {
+                text: `🛠️ *MOD*\n${m.badWords?"🟢":"🔴"} Bad Word\n${m.links?"🟢":"🔴"} Link\n${m.spam?"🟢":"🔴"} Spam\n${m.antiForward?"🟢":"🔴"} Forward`
+              });
+              continue;
+            }
+            if (command === "modon") {
+              for (const k of Object.keys(MODERATION_DEFAULTS)) setModerationStatus(remoteJid, k, true);
+              await sock.sendMessage(remoteJid, { text: "🛡️ MOD ON" });
+              continue;
+            }
+            if (command === "modoff") {
+              for (const k of Object.keys(MODERATION_DEFAULTS)) setModerationStatus(remoteJid, k, false);
+              await sock.sendMessage(remoteJid, { text: "🛡️ MOD OFF" });
+              continue;
+            }
+            if (command === "on" || command === "off") {
+              const t = getCanonicalCommand(args[0] || "");
+              if (!t) { await sock.sendMessage(remoteJid, { text: `⚙️ /${command} <cmd>` }); continue; }
+              if (PROTECTED_COMMANDS.includes(t)) {
+                await sock.sendMessage(remoteJid, { text: "⚠️ Protected." });
+                continue;
+              }
+              if (!isKnownCommand(t)) {
+                await sock.sendMessage(remoteJid, { text: `❌ /${t} নেই।` });
+                continue;
+              }
+              const e = command === "on";
+              setCommandStatus(remoteJid, t, e);
+              await sock.sendMessage(remoteJid, { text: `${e?"🟢":"🔴"} /${t} ${e?"ON":"OFF"}` });
+              continue;
+            }
+            if (command === "cmdlist") { await sendCommandList(remoteJid); continue; }
+            if (command === "mute") { await handleMute(remoteJid, message, args); continue; }
+            if (command === "unmute") { await handleUnmute(remoteJid, message); continue; }
+            if (command === "mutelist") { await handleMuteList(remoteJid); continue; }
+
+            if (!isBotEnabled(remoteJid)) continue;
+            const ca = getCanonicalCommand(command);
+            if (!isKnownCommand(ca)) continue;
+            if (!isCommandEnabled(remoteJid, ca)) continue;
+
+            if (ca === "menu" || ca === "bot") { await sendPublicMenu(remoteJid); continue; }
+            if (ca === "rules") { await sock.sendMessage(remoteJid, { text: GROUP_RULES }); continue; }
+            if (ca === "website") { await sock.sendMessage(remoteJid, { text: WEBSITE_TEXT }); continue; }
+            if (ca === "deal") { await sendDealNotice(remoteJid); continue; }
+            if (ca === "admin") { await sendAdminList(remoteJid); continue; }
+            if (ca === "tagall") { await handleTagAll(remoteJid, message, args); continue; }
+            if (ca === "members") {
+              const md = await sock.groupMetadata(remoteJid);
+              await sock.sendMessage(remoteJid, { text: `👥 মোট: ${md?.participants?.length || 0}` });
+              continue;
+            }
+            if (ca === "groupinfo") {
+              const md = await sock.groupMetadata(remoteJid);
+              const p = md?.participants || [];
+              const a = p.filter(isAdminParticipant);
+              await sock.sendMessage(remoteJid, {
+                text: `👥 *GROUP INFO*\n\n📛 ${md?.subject}\n🆔 ${remoteJid}\n👥 ${p.length}\n👑 ${a.length}`
+              });
+              continue;
+            }
+            if (ca === "id") {
+              await sock.sendMessage(remoteJid, { text: `🆔 ${remoteJid}` });
+              continue;
+            }
+            if (ca === "ping") {
+              const s = Date.now();
+              const m = await sock.sendMessage(remoteJid, { text: "🏓" });
+              const p = Date.now() - s;
+              await sock.sendMessage(remoteJid, {
+                text: `🏓 PONG ${p}ms`,
+                quoted: m
+              });
+              continue;
+            }
+            if (ca === "piyas") {
+              await sock.sendMessage(remoteJid, { text: PIYAS_INFO });
+              continue;
+            }
+          } catch (e) {
+            console.log("⚠️ Msg error:", e?.message);
+          }
+        }
+      } catch (e) {
+        console.log("⚠️ Handler error:", e?.message);
+      }
+    });
+
+    console.log("🚀 Starting...");
+  } catch (e) {
+    console.log("❌ Start failed:", e?.message);
+    sock = null;
+    if (!reconnecting) {
+      reconnecting = true;
+      setTimeout(() => { reconnecting = false; startBot(); }, 5000);
+    }
+  }
+}
+
+process.on("uncaughtException", e => console.log("❌ Uncaught:", e?.message));
+process.on("unhandledRejection", e => console.log("❌ Unhandled:", e?.message));
+
+async function shutdown() {
+  console.log("\n🛑 Shutting down...");
+  saveAIMemory();
+  saveBotStatus();
+  saveMuted();
+  saveWarnings();
+  saveAIStatus();
+  try { if (sock) sock.end(new Error("shutdown")); } catch {}
+  try { server.close(); } catch {}
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+loadBotStatus();
+loadWarnings();
+loadMuted();
+loadAIStatus();
+loadAIMemory();
+
+startBot();
