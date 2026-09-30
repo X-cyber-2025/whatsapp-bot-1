@@ -552,8 +552,7 @@ function setModerationStatus(g, t, e) {
   m[t] = Boolean(e);
   saveBotStatus();
   return true;
-}
-async function deleteMessage(remoteJid, message) {
+}async function deleteMessage(remoteJid, message) {
   try {
     if (!sock || !remoteJid || !message?.key) return false;
     await sock.sendMessage(remoteJid, { delete: message.key });
