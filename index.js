@@ -49,19 +49,20 @@ const contactPhoneJids = new Map();
 const lidToPhoneJid = new Map();
 
 /* =========================================================
-   GEMINI AI SETUP
+   GEMINI AI SETUP  👈 এখানে আপনার Key পড়া হবে
 ========================================================= */
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const AI_MODEL = process.env.AI_MODEL || "gemini-1.5-flash";
 let geminiModel = null;
 
 if (GEMINI_API_KEY) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     geminiModel = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash"
+      model: AI_MODEL
     });
-    console.log("🤖 Gemini AI ready.");
+    console.log(`🤖 Gemini AI ready (${AI_MODEL}).`);
   } catch (error) {
     console.log("⚠️ Gemini init error:", error?.message);
   }
@@ -836,7 +837,6 @@ async function moderateMessage(remoteJid, message, text) {
     const memberJid = sender ? await getPhoneJid({ id: sender }) : null;
     const targetJid = memberJid || sender;
 
-    // 🔇 মিউট চেক সবার আগে
     if (targetJid && isMuted(remoteJid, targetJid)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -846,13 +846,11 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    // 👑 Admin হলে মডারেশন স্কিপ
     if (sender) {
       const admin = await isSenderAdmin(remoteJid, message);
       if (admin) return false;
     }
 
-    // 🚫 Bad Word
     if (isModerationEnabled(remoteJid, "badWords")) {
       const badWord = containsBadWord(text);
       if (badWord) {
@@ -870,7 +868,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    // 🔗 Link
     if (isModerationEnabled(remoteJid, "links") && containsLink(text)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -883,7 +880,6 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    // 📨 Anti-Forward
     if (isModerationEnabled(remoteJid, "antiForward") && targetJid) {
       const isForward = message?.message?.extendedTextMessage?.contextInfo?.isForwarded ||
                        message?.message?.imageMessage?.contextInfo?.isForwarded ||
@@ -902,7 +898,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    // 🔁 Spam
     if (isModerationEnabled(remoteJid, "spam") && targetJid) {
       if (isDuplicateSpam(remoteJid, targetJid, text)) {
         const deleted = await deleteMessage(remoteJid, message);
@@ -940,6 +935,7 @@ const server = http.createServer((req, res) => {
       bot: "WhatsApp Group Bot",
       connected: !!sock,
       ai: !!geminiModel,
+      model: AI_MODEL,
       uptime: Math.floor(process.uptime()),
       groups: Object.keys(botStatus).length,
       warnings: Object.keys(warnings).length,
@@ -1450,6 +1446,7 @@ async function sendAdminPanel(remoteJid) {
 ╭─❖ 🤖 *BOT STATUS*
 │ ${isBotEnabled(remoteJid) ? "🟢 Bot: ON" : "🔴 Bot: OFF"}
 │ ${isAIEnabled(remoteJid) ? "🟢 AI: ON" : "🔴 AI: OFF"}
+│ 📦 Model: ${AI_MODEL}
 ╰────────────────────
 
 ╭─❖ 🔒 *GROUP STATUS*
@@ -2412,7 +2409,6 @@ async function startBot() {
             const args = parts;
             if (!command) continue;
 
-            // Admin only
             if (ADMIN_ONLY_COMMANDS.includes(command)) {
               const admin = await isSenderAdmin(remoteJid, message);
               if (!admin) {
@@ -2426,7 +2422,6 @@ async function startBot() {
               }
             }
 
-            /* GROUP CONTROL */
             if (command === "গ্রুপ") {
               const subCommand = normalizeCommandName(args[0]);
               if (subCommand !== "বন্ধ") {
@@ -2445,7 +2440,6 @@ async function startBot() {
               continue;
             }
 
-            /* AI ON/OFF */
             if (command === "aion") {
               setAIStatus(remoteJid, true);
               await sock.sendMessage(remoteJid, { text: "🤖 *AI ON*\n\n✅ এখন থেকে AI রিপ্লাই দিবে।" });
@@ -2457,7 +2451,6 @@ async function startBot() {
               continue;
             }
 
-            /* BOT OFF */
             if (command === "botoff") {
               if (!isBotEnabled(remoteJid)) {
                 await sock.sendMessage(remoteJid, { text: BOT_ALREADY_OFF_TEXT });
@@ -2468,7 +2461,6 @@ async function startBot() {
               continue;
             }
 
-            /* BOT ON */
             if (command === "boton") {
               if (isBotEnabled(remoteJid)) {
                 await sock.sendMessage(remoteJid, { text: BOT_ALREADY_ON_TEXT });
