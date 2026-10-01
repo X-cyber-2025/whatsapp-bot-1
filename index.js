@@ -171,7 +171,7 @@ const BAD_WORDS = [
 ];
 
 /* =========================================================
-   LOAD / SAVE FUNCTIONS
+   LOAD / SAVE
 ========================================================= */
 
 function loadWarnings() {
@@ -384,13 +384,15 @@ const COMMAND_ALIASES = { "ডিল": "deal" };
 const ADMIN_ONLY_COMMANDS = [
   "adminpanel","cmdlist","on","off","boton","botoff",
   "mod","moderation","modstatus","modon","modoff","গ্রুপ",
-  "mute","unmute","mutelist"
+  "mute","unmute","mutelist",
+  "tagall"
 ];
 
 const PROTECTED_COMMANDS = [
   "adminpanel","cmdlist","on","off","boton","botoff",
   "mod","moderation","modstatus","modon","modoff","গ্রুপ",
-  "mute","unmute","mutelist"
+  "mute","unmute","mutelist",
+  "tagall"
 ];
 
 function normalizeCommandName(command) {
@@ -668,10 +670,6 @@ async function resolveLidToPhoneJid(lid) {
   return null;
 }
 
-/* =========================================================
-   CONTACT CACHE
-========================================================= */
-
 function saveContacts(contacts = []) {
   for (const contact of contacts) {
     if (!contact) continue;
@@ -700,10 +698,6 @@ function saveContacts(contacts = []) {
     }
   }
 }
-
-/* =========================================================
-   PHONE JID
-========================================================= */
 
 function getDirectPhoneJid(participant = {}) {
   if (participant.phoneNumber) {
@@ -773,10 +767,6 @@ function findParticipant(participants = [], jid) {
   ) || null;
 }
 
-/* =========================================================
-   BOT JID
-========================================================= */
-
 function getBotPhoneJid() {
   try {
     const ownId = normalizeJid(sock?.user?.id);
@@ -789,10 +779,6 @@ function getBotPhoneJid() {
     return null;
   } catch { return null; }
 }
-
-/* =========================================================
-   BOT ADMIN CHECK
-========================================================= */
 
 async function isBotAdminInGroup(groupId) {
   try {
@@ -823,18 +809,10 @@ async function isBotAdminInGroup(groupId) {
       if (resolved) botParticipant = findParticipant(participants, resolved);
     }
 
-    if (!botParticipant) {
-      console.log(`🚫 Bot not found in group: ${groupId}`);
-      return false;
-    }
+    if (!botParticipant) return false;
 
-    const admin = isAdminParticipant(botParticipant);
-    if (!admin) {
-      console.log(`🚫 Bot is NOT admin in: ${groupId}`);
-    }
-    return admin;
+    return isAdminParticipant(botParticipant);
   } catch (error) {
-    console.log("⚠️ Bot admin check error:", error?.message);
     return false;
   }
 }
@@ -869,7 +847,6 @@ function getMessageText(message) {
   const msg = message?.message;
   if (!msg) return "";
 
-  // unwrap viewOnce / ephemeral / documentWithCaption
   const inner =
     msg.viewOnceMessage?.message ||
     msg.viewOnceMessageV2?.message ||
@@ -905,7 +882,7 @@ function getMentionedJids(message) {
 }
 
 /* =========================================================
-   DELETE / MODERATION WARNINGS
+   DELETE / WARNINGS
 ========================================================= */
 
 async function deleteMessage(remoteJid, message) {
@@ -986,7 +963,6 @@ async function moderateMessage(remoteJid, message, text) {
     const memberJid = sender ? await getPhoneJid({ id: sender }) : null;
     const targetJid = memberJid || sender;
 
-    // MUTE CHECK
     if (targetJid && isMuted(remoteJid, targetJid)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -995,7 +971,6 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    // BAD WORD
     if (isModerationEnabled(remoteJid, "badWords")) {
       const badWord = containsBadWord(text);
       if (badWord) {
@@ -1013,7 +988,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    // LINK
     if (isModerationEnabled(remoteJid, "links") && containsLink(text)) {
       const deleted = await deleteMessage(remoteJid, message);
       if (deleted) {
@@ -1026,7 +1000,6 @@ async function moderateMessage(remoteJid, message, text) {
       return true;
     }
 
-    // ANTI-FORWARD
     if (isModerationEnabled(remoteJid, "antiForward") && targetJid) {
       const inner = message?.message?.extendedTextMessage ||
                     message?.message?.imageMessage ||
@@ -1044,7 +1017,6 @@ async function moderateMessage(remoteJid, message, text) {
       }
     }
 
-    // SPAM
     if (isModerationEnabled(remoteJid, "spam") && targetJid) {
       if (isDuplicateSpam(remoteJid, targetJid, text)) {
         const deleted = await deleteMessage(remoteJid, message);
@@ -1071,7 +1043,7 @@ async function moderateMessage(remoteJid, message, text) {
 }
 
 /* =========================================================
-   COPY BUTTON (FIXED)
+   COPY BUTTON
 ========================================================= */
 
 function makeCopyButton(command) {
@@ -1115,7 +1087,6 @@ async function sendCopyButton(remoteJid, command) {
     await sock.relayMessage(remoteJid, message.message, { messageId: message.key.id });
     return true;
   } catch (error) {
-    // Fallback: text only
     try {
       await sock.sendMessage(remoteJid, { text: `📋 *Copy:* ${command}` });
     } catch {}
@@ -1132,7 +1103,7 @@ async function sendCopyButtons(remoteJid, commands) {
 }
 
 /* =========================================================
-   TAG ALL (FIXED)
+   TAG ALL (ADMIN ONLY)
 ========================================================= */
 
 async function handleTagAll(remoteJid, message, args) {
@@ -1147,17 +1118,12 @@ async function handleTagAll(remoteJid, message, args) {
       return;
     }
 
-    // Build mentions - use phone JID if available, else fallback to id/lid
     const mentions = [];
     for (const p of participants) {
       const phoneJid = await getPhoneJid(p);
-      if (phoneJid) {
-        mentions.push(phoneJid);
-      } else if (p.id) {
-        mentions.push(p.id);
-      } else if (p.lid) {
-        mentions.push(p.lid);
-      }
+      if (phoneJid) mentions.push(phoneJid);
+      else if (p.id) mentions.push(p.id);
+      else if (p.lid) mentions.push(p.lid);
     }
 
     if (!mentions.length) {
@@ -1170,7 +1136,6 @@ async function handleTagAll(remoteJid, message, args) {
       ? `📢 *TAG ALL*\n\n${customText}`
       : `📢 *TAG ALL*\n\nসবাইকে ডাকা হচ্ছে!`;
 
-    // Build mention line
     const mentionLines = mentions
       .map(jid => `@${jid.split("@")[0]}`)
       .join(" ");
@@ -1296,21 +1261,34 @@ async function handleMuteList(remoteJid) {
 }
 
 /* =========================================================
-   CALCULATOR
+   CALCULATOR (FULLY WORKING)
 ========================================================= */
+
+function toEnglishDigits(str) {
+  const banglaDigits = { "০":"0","১":"1","২":"2","৩":"3","৪":"4","৫":"5","৬":"6","৭":"7","৮":"8","৯":"9" };
+  return String(str).replace(/[০-৯]/g, d => banglaDigits[d]);
+}
 
 function calculateExpression(expression) {
   try {
-    const value = String(expression || "").trim().replace(/,/g, "");
+    let value = String(expression || "").trim();
+    value = toEnglishDigits(value);
+    value = value.replace(/,/g, "");
+    value = value.replace(/×/g, "*").replace(/÷/g, "/");
+    value = value.replace(/x/gi, "*");
+
     if (!value) return null;
     if (!/^[0-9+\-*/%.()\s]+$/.test(value)) return null;
     if (value.includes("**") || value.includes("//") || value.includes("/*") || value.includes("*/")) return null;
     if (!/\d/.test(value)) return null;
     if (!/[+\-*/%]/.test(value)) return null;
+
     const result = Function(`"use strict"; return (${value})`)();
     if (typeof result !== "number" || !Number.isFinite(result)) return null;
     return result;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function formatCalculationResult(result) {
@@ -1321,30 +1299,37 @@ function formatCalculationResult(result) {
 
 function isCalculatorMessage(text) {
   if (!text) return false;
-  const value = String(text).trim();
+  let value = String(text).trim();
   if (!value.startsWith("/")) return false;
-  const expression = value.slice(1).trim();
+  let expression = value.slice(1).trim();
+  expression = toEnglishDigits(expression);
+  expression = expression.replace(/×/g, "*").replace(/÷/g, "/");
   if (!expression) return false;
   return /^[0-9+\-*/%.()\s]+$/.test(expression);
 }
 
 async function handleCalculator(remoteJid, text) {
   try {
-    const expression = String(text).trim().slice(1).trim();
+    let expression = String(text).trim().slice(1).trim();
     const result = calculateExpression(expression);
+    const displayExpression = toEnglishDigits(expression);
 
     if (result === null) {
       await sock.sendMessage(remoteJid, {
-        text: `🧮 *CALCULATOR*\n\n❌ হিসাবটি সঠিক নয়।\n\n💡 উদাহরণ:\n/20+2\n/100-25\n/20*5\n/100/4\n/(20+5)*2\n/500+250-100\n\n🤍 *Piyas Bot*`
+        text: `🧮 *CALCULATOR*\n\n❌ হিসাবটি সঠিক নয়।\n\n💡 উদাহরণ:\n/20+2\n/100-25\n/20*5\n/100/4\n/(20+5)*2\n/500+250-100\n/120*2\n\n🤍 *Piyas Bot*`
       });
       return true;
     }
 
+    const formattedResult = formatCalculationResult(result);
+
     await sock.sendMessage(remoteJid, {
-      text: `🧮 *CALCULATOR*\n\n📌 Expression: ${expression}\n\n✅ Result: ${formatCalculationResult(result)}\n\n🤍 *Piyas Bot*`
+      text: `🧮 *CALCULATOR*\n\n📌 Expression: /${displayExpression}\n\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Result: *${formattedResult}*\n\n━━━━━━━━━━━━━━━━━━━━\n\n🤍 *Piyas Bot*`
     });
+
     return true;
   } catch (error) {
+    console.log("⚠️ Calculator error:", error?.message);
     return false;
   }
 }
@@ -1368,7 +1353,7 @@ function buildMenuText(remoteJid) {
 │ 5️⃣ ${enabled("members") ? "/members" : "🔴 /members OFF"}
 │ 6️⃣ ${enabled("groupinfo") ? "/groupinfo" : "🔴 /groupinfo OFF"}
 │ 7️⃣ ${enabled("id") ? "/id" : "🔴 /id OFF"}
-│ 8️⃣ ${enabled("tagall") ? "/tagall <msg>" : "🔴 /tagall OFF"}
+│ 8️⃣ ${enabled("tagall") ? "/tagall <msg>" : "🔴 /tagall OFF"} _(Admin Only)_
 ╰────────────────────
 
 ╭─❖ ⚙️ *UTILITY*
@@ -1392,6 +1377,7 @@ function buildMenuText(remoteJid) {
 │ 1️⃣4️⃣ /100-25
 │ 1️⃣5️⃣ /20*5
 │ 1️⃣6️⃣ /100/4
+│ 1️⃣7️⃣ /120*2
 ╰────────────────────
 `;
 }
@@ -1401,7 +1387,7 @@ async function sendPublicMenu(remoteJid) {
     await sock.sendMessage(remoteJid, { text: buildMenuText(remoteJid) });
     const commands = [
       "/menu", "/bot", "/rules", "/admin", "/members",
-      "/groupinfo", "/id", "/tagall", "/ping", "/deal",
+      "/groupinfo", "/id", "/ping", "/deal",
       "/ডিল", "/piyas", "/website"
     ].filter(c => isCommandEnabled(remoteJid, c));
     await sendCopyButtons(remoteJid, commands);
@@ -2115,23 +2101,28 @@ async function startBot() {
         for (const message of messages) {
           try {
             if (!message) continue;
-            if (message.key?.fromMe) continue;
 
             const remoteJid = message.key?.remoteJid;
             if (!remoteJid || !remoteJid.endsWith("@g.us")) continue;
 
-            const botIsAdmin = await isBotAdminInGroup(remoteJid);
-            if (!botIsAdmin) continue;
-
             const text = getMessageText(message);
             if (!text) continue;
+
+            // Owner-এর কমান্ড work করবে, বট নিজে পাঠানো non-command skip
+            const isFromMe = message.key?.fromMe === true;
+            const isCommand = text.trim().startsWith("/");
+
+            if (isFromMe && !isCommand) continue;
+
+            const botIsAdmin = await isBotAdminInGroup(remoteJid);
+            if (!botIsAdmin) continue;
 
             const moderated = await moderateMessage(remoteJid, message, text);
             if (moderated) continue;
 
             const trimmedText = text.trim();
 
-            // Calculator
+            // CALCULATOR
             if (isCalculatorMessage(trimmedText)) {
               await handleCalculator(remoteJid, trimmedText);
               continue;
@@ -2145,10 +2136,19 @@ async function startBot() {
             const args = parts;
             if (!command) continue;
 
-            // Admin check
+            // ADMIN CHECK
             if (ADMIN_ONLY_COMMANDS.includes(command)) {
               const admin = await isSenderAdmin(remoteJid, message);
-              if (!admin) continue;
+              if (!admin) {
+                if (command === "tagall") {
+                  try {
+                    await sock.sendMessage(remoteJid, {
+                      text: "⛔ *Access Denied*\n\n/tagall শুধুমাত্র Group Admin/Owner ব্যবহার করতে পারবেন।"
+                    });
+                  } catch {}
+                }
+                continue;
+              }
             }
 
             // GROUP CONTROL
@@ -2206,9 +2206,7 @@ async function startBot() {
               setModerationStatus(remoteJid, "spam", true);
               setModerationStatus(remoteJid, "warnings", true);
               setModerationStatus(remoteJid, "antiForward", true);
-              await sock.sendMessage(remoteJid, {
-                text: "🛡️ *MODERATION ON*\n\n🟢 সব চালু"
-              });
+              await sock.sendMessage(remoteJid, { text: "🛡️ *MODERATION ON*\n\n🟢 সব চালু" });
               continue;
             }
 
@@ -2250,7 +2248,6 @@ async function startBot() {
               continue;
             }
 
-            // MUTE COMMANDS
             if (command === "mute") {
               await handleMute(remoteJid, message, args);
               continue;
@@ -2270,7 +2267,6 @@ async function startBot() {
             if (!isKnownCommand(commandAlias)) continue;
             if (!isCommandEnabled(remoteJid, commandAlias)) continue;
 
-            // MENU
             if (commandAlias === "menu" || commandAlias === "bot") {
               await sendPublicMenu(remoteJid);
               continue;
@@ -2300,7 +2296,6 @@ async function startBot() {
               continue;
             }
 
-            // TAG ALL
             if (commandAlias === "tagall") {
               await handleTagAll(remoteJid, message, args);
               continue;
