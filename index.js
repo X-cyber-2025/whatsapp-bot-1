@@ -2,11 +2,9 @@ import "dotenv/config";
 
 import makeWASocket, {
   Browsers,
-  DisconnectReason,
   useMultiFileAuthState
 } from "@whiskeysockets/baileys";
 
-import { Boom } from "@hapi/boom";
 import pino from "pino";
 
 const AUTH_DIR = process.env.AUTH_DIR || "./auth_info";
@@ -22,41 +20,31 @@ const logger = pino({
 });
 
 let shuttingDown = false;
+let pairingCodeCreated = false;
+let phoneConnected = false;
 let socket = null;
-
-const WAIT_AFTER_CLOSE = 30000;
-const INITIAL_WAIT = 8000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function formatPhone(number) {
-  if (!number) return "NOT SET";
-
-  if (number.length > 7) {
-    return (
-      "+" +
-      number.slice(0, 3) +
-      " " +
-      number.slice(3, 6) +
-      " " +
-      number.slice(6)
-    );
+function formatNumber(number) {
+  if (!number) {
+    return "NOT SET";
   }
 
   return "+" + number;
 }
 
-function printHeader() {
+function showInfo() {
   console.log("");
   console.log("==============================================");
-  console.log("          PIYAS WHATSAPP BOT");
+  console.log("             PIYAS WHATSAPP BOT");
   console.log("==============================================");
   console.log("");
   console.log(
     "📱 WhatsApp Number :",
-    formatPhone(PHONE_NUMBER)
+    formatNumber(PHONE_NUMBER)
   );
   console.log(
     "👥 Group ID        :",
@@ -71,26 +59,35 @@ function printHeader() {
   console.log("");
 }
 
-async function createConnection() {
-  if (shuttingDown) return;
+async function main() {
+  showInfo();
+
+  if (!PHONE_NUMBER) {
+    console.log("❌ PHONE_NUMBER is missing in .env");
+    console.log("");
+    console.log("Example:");
+    console.log("PHONE_NUMBER=8801967619812");
+    console.log("");
+
+    /*
+     * Keep process alive.
+     * Do not crash.
+     */
+    while (!shuttingDown) {
+      await sleep(30000);
+    }
+
+    return;
+  }
 
   const {
     state,
     saveCreds
   } = await useMultiFileAuthState(AUTH_DIR);
 
-  printHeader();
-
-  console.log("🔐 Session status:");
-
-  if (state.creds.registered) {
-    console.log("   ✅ Phone is already registered.");
-  } else {
-    console.log("   ⏳ Phone is NOT linked yet.");
-  }
-
-  console.log("");
-
+  /*
+   * Create WhatsApp socket ONLY ONCE.
+   */
   socket = makeWASocket({
     auth: state,
 
@@ -118,11 +115,12 @@ async function createConnection() {
     saveCreds
   );
 
-  let pairingRequested = false;
-
+  /*
+   * CONNECTION UPDATE
+   */
   socket.ev.on(
     "connection.update",
-    async update => {
+    update => {
       const {
         connection,
         lastDisconnect
@@ -133,283 +131,188 @@ async function createConnection() {
         console.log(
           "🔄 Connecting to WhatsApp..."
         );
+
         console.log(
-          "📱 Target Number:",
-          formatPhone(PHONE_NUMBER)
+          "📱 Number:",
+          formatNumber(PHONE_NUMBER)
         );
+
         console.log("");
       }
 
       if (connection === "open") {
+        phoneConnected = true;
+
         console.log("");
         console.log(
           "=============================================="
         );
+
         console.log(
-          "             ✅ CONNECTED"
+          "        🎉 WHATSAPP CONNECTED"
         );
+
         console.log(
           "=============================================="
         );
+
         console.log("");
+
         console.log(
           "📱 Connected Number:",
-          formatPhone(PHONE_NUMBER)
+          formatNumber(PHONE_NUMBER)
         );
 
         console.log(
           "🤖 Bot Status: ONLINE"
         );
 
-        if (GROUP_ID) {
-          console.log(
-            "👥 Target Group:",
-            GROUP_ID
-          );
-        }
-
-        console.log("");
         console.log(
-          "🔐 Authentication saved."
-        );
-
-        console.log(
-          "⏳ Bot will remain running."
+          "🔐 Session: SAVED"
         );
 
         console.log("");
-        return;
+
+        console.log(
+          "⏳ Bot will continue running..."
+        );
+
+        console.log("");
       }
 
       if (connection === "close") {
-        const statusCode =
-          new Boom(lastDisconnect?.error)
-            ?.output
-            ?.statusCode;
-
         console.log("");
         console.log(
           "❌ WhatsApp connection closed."
         );
 
+        /*
+         * IMPORTANT:
+         *
+         * We DO NOT request another pairing code.
+         * We DO NOT restart the socket.
+         * We DO NOT call main() again.
+         */
         console.log(
           "📱 Number:",
-          formatPhone(PHONE_NUMBER)
-        );
-
-        console.log(
-          "🔢 Code:",
-          statusCode || "unknown"
+          formatNumber(PHONE_NUMBER)
         );
 
         console.log("");
+        console.log(
+          "⏳ Waiting..."
+        );
 
-        /*
-         * Logged out means the saved session
-         * is no longer valid.
-         */
-        if (
-          statusCode ===
-          DisconnectReason.loggedOut
-        ) {
+        if (!phoneConnected) {
           console.log(
-            "🔴 WhatsApp logged out."
+            "⏳ Phone has NOT been linked yet."
           );
 
           console.log(
-            "🧹 Delete auth_info and pair again."
+            "🔐 Pairing code will NOT be generated again."
           );
 
-          console.log("");
-          return;
+          console.log(
+            "⛔ No automatic restart."
+          );
+        } else {
+          console.log(
+            "ℹ️ Existing session was disconnected."
+          );
+
+          console.log(
+            "⛔ No automatic pairing code will be generated."
+          );
         }
 
-        /*
-         * If the phone is not registered yet,
-         * DO NOT immediately restart.
-         */
-        if (!state.creds.registered) {
-          console.log(
-            "⏳ Phone is not linked yet."
-          );
-
-          console.log(
-            "⏳ Waiting before trying again..."
-          );
-
-          console.log(
-            `⏳ Next attempt in ${
-              WAIT_AFTER_CLOSE / 1000
-            } seconds.`
-          );
-
-          console.log("");
-
-          await sleep(
-            WAIT_AFTER_CLOSE
-          );
-
-          if (!shuttingDown) {
-            await createConnection();
-          }
-
-          return;
-        }
-
-        /*
-         * Existing linked session.
-         * Reconnect slowly.
-         */
-        if (!shuttingDown) {
-          console.log(
-            "🔄 Existing session detected."
-          );
-
-          console.log(
-            "⏳ Reconnecting in 30 seconds..."
-          );
-
-          await sleep(
-            WAIT_AFTER_CLOSE
-          );
-
-          if (!shuttingDown) {
-            await createConnection();
-          }
-        }
+        console.log("");
       }
     }
   );
 
   /*
-   * Already linked
+   * EXISTING SESSION
    */
   if (state.creds.registered) {
     console.log("");
     console.log(
-      "=============================================="
-    );
-    console.log(
-      "🔐 EXISTING SESSION FOUND"
-    );
-    console.log(
-      "=============================================="
+      "🔐 Existing WhatsApp session found."
     );
 
     console.log(
       "📱 Number:",
-      formatPhone(PHONE_NUMBER)
+      formatNumber(PHONE_NUMBER)
     );
 
     console.log(
-      "⏳ Waiting for WhatsApp connection..."
-    );
-
-    console.log("");
-
-    return;
-  }
-
-  /*
-   * Check phone number
-   */
-  if (!PHONE_NUMBER) {
-    console.log("");
-    console.log(
-      "❌ PHONE_NUMBER is missing."
-    );
-
-    console.log(
-      "Add PHONE_NUMBER to .env"
+      "⏳ Waiting for connection..."
     );
 
     console.log("");
 
     /*
-     * Keep process alive.
+     * Keep alive forever.
      */
     while (!shuttingDown) {
-      await sleep(30000);
+      await sleep(10000);
     }
 
     return;
   }
 
-  console.log("");
+  /*
+   * Give WhatsApp connection some time
+   * before creating the ONE pairing code.
+   */
   console.log(
-    "=============================================="
-  );
-  console.log(
-    "📱 NUMBER TO BE CONNECTED"
-  );
-  console.log(
-    "=============================================="
+    "⏳ Preparing ONE pairing code..."
   );
 
-  console.log(
-    "WhatsApp Number:",
-    formatPhone(PHONE_NUMBER)
-  );
+  await sleep(8000);
 
-  console.log(
-    "Raw Number:",
-    PHONE_NUMBER
-  );
-
-  console.log(
-    "=============================================="
-  );
-  console.log("");
-
-  console.log(
-    "⏳ Preparing pairing..."
-  );
-
-  await sleep(INITIAL_WAIT);
-
-  if (
-    shuttingDown ||
-    state.creds.registered
-  ) {
+  if (shuttingDown) {
     return;
   }
 
   /*
-   * Generate ONE pairing code
+   * CREATE PAIRING CODE ONLY ONCE
    */
-  try {
-    if (!pairingRequested) {
-      pairingRequested = true;
+  if (!pairingCodeCreated) {
+    try {
+      pairingCodeCreated = true;
+
+      console.log("");
+      console.log(
+        "=============================================="
+      );
+
+      console.log(
+        "             🔐 PAIRING CODE"
+      );
+
+      console.log(
+        "=============================================="
+      );
+
+      console.log("");
+
+      console.log(
+        "📱 Number to connect:"
+      );
+
+      console.log(
+        "   " + formatNumber(PHONE_NUMBER)
+      );
+
+      console.log("");
 
       const code =
         await socket.requestPairingCode(
           PHONE_NUMBER
         );
 
-      console.log("");
       console.log(
-        "=============================================="
-      );
-      console.log(
-        "             🔐 PAIRING CODE"
-      );
-      console.log(
-        "=============================================="
-      );
-
-      console.log("");
-      console.log(
-        "📱 CONNECT THIS NUMBER:"
-      );
-
-      console.log(
-        "   " + formatPhone(PHONE_NUMBER)
-      );
-
-      console.log("");
-
-      console.log(
-        "🔑 PAIRING CODE:"
+        "🔑 Pairing Code:"
       );
 
       console.log(
@@ -423,6 +326,7 @@ async function createConnection() {
       );
 
       console.log("");
+
       console.log(
         "📲 WhatsApp → Settings"
       );
@@ -440,130 +344,133 @@ async function createConnection() {
       );
 
       console.log("");
+
       console.log(
-        "⏳ ENTER THE CODE ABOVE."
+        "⏳ Enter the code above."
       );
 
       console.log(
-        "⏳ BOT WILL WAIT FOR THE PHONE."
+        "⏳ Bot will WAIT for the phone."
       );
 
       console.log(
-        "⛔ Do NOT restart the server."
+        "⛔ No second pairing code will be generated."
+      );
+
+      console.log(
+        "⛔ No automatic restart will happen."
+      );
+
+      console.log("");
+
+    } catch (error) {
+      /*
+       * Even if code generation fails,
+       * do NOT keep generating codes.
+       */
+      console.log("");
+      console.log(
+        "❌ Pairing code generation failed."
+      );
+
+      console.log(
+        "Reason:",
+        error?.message || error
       );
 
       console.log("");
 
       console.log(
-        "=============================================="
+        "⛔ No automatic second pairing code."
       );
-      console.log("");
-    }
-  } catch (error) {
-    console.log("");
-    console.log(
-      "❌ Pairing code could not be generated."
-    );
-
-    console.log(
-      "Reason:",
-      error?.message || error
-    );
-
-    console.log("");
-
-    console.log(
-      "⏳ Bot will wait instead of crashing."
-    );
-
-    console.log("");
-
-    /*
-     * Keep alive.
-     */
-    while (!shuttingDown) {
-      await sleep(30000);
 
       console.log(
-        "⏳ Still waiting for WhatsApp..."
+        "⏳ Server will remain alive."
       );
+
+      console.log("");
     }
-
-    return;
   }
 
   /*
-   * WAIT UNTIL PHONE IS LINKED
+   * WAIT FOREVER
+   *
+   * This is the important part.
+   *
+   * No requestPairingCode()
+   * No restart
+   * No main()
+   * No new code
    */
-  while (
-    !state.creds.registered &&
-    !shuttingDown
-  ) {
-    await sleep(5000);
+  console.log(
+    "=============================================="
+  );
 
-    console.log(
-      "⏳ Waiting for:",
-      formatPhone(PHONE_NUMBER)
-    );
+  console.log(
+    "⏳ WAITING FOR PHONE CONNECTION"
+  );
 
-    console.log(
-      "   Status: NOT CONNECTED"
-    );
+  console.log(
+    "=============================================="
+  );
 
-    console.log("");
-  }
+  console.log("");
 
-  /*
-   * Successfully linked
-   */
-  if (state.creds.registered) {
-    console.log("");
-    console.log(
-      "=============================================="
-    );
+  console.log(
+    "📱 Waiting for:",
+    formatNumber(PHONE_NUMBER)
+  );
 
-    console.log(
-      "       🎉 PHONE CONNECTED SUCCESSFULLY"
-    );
+  console.log(
+    "🔐 Pairing code already generated:"
+  );
 
-    console.log(
-      "=============================================="
-    );
+  console.log(
+    pairingCodeCreated ? "YES" : "NO"
+  );
 
-    console.log("");
+  console.log("");
 
-    console.log(
-      "📱 Connected Number:",
-      formatPhone(PHONE_NUMBER)
-    );
-
-    console.log(
-      "🤖 Bot Status: ONLINE"
-    );
-
-    console.log(
-      "🔐 Session: SAVED"
-    );
-
-    console.log("");
-
-    console.log(
-      "⏳ Bot will keep running..."
-    );
-
-    console.log("");
-  }
-
-  /*
-   * Keep process alive forever
-   */
   while (!shuttingDown) {
-    await sleep(30000);
+    await sleep(10000);
+
+    if (phoneConnected) {
+      console.log(
+        "✅ WhatsApp is connected."
+      );
+
+      console.log(
+        "📱 Number:",
+        formatNumber(PHONE_NUMBER)
+      );
+
+      console.log(
+        "🤖 Bot remains online."
+      );
+
+      console.log("");
+
+      /*
+       * Continue keeping the process alive.
+       */
+      continue;
+    }
+
+    console.log(
+      "⏳ Still waiting for:",
+      formatNumber(PHONE_NUMBER)
+    );
+
+    console.log(
+      "🔐 New pairing code: NO"
+    );
+
+    console.log("");
   }
 }
 
 /*
- * Graceful shutdown
+ * SAFE SHUTDOWN
  */
 process.on("SIGINT", () => {
   shuttingDown = true;
@@ -588,7 +495,7 @@ process.on("SIGTERM", () => {
 });
 
 /*
- * Prevent unexpected crash
+ * Prevent unexpected process termination.
  */
 process.on(
   "unhandledRejection",
@@ -621,10 +528,10 @@ process.on(
 /*
  * START
  */
-createConnection().catch(error => {
+main().catch(error => {
   console.log("");
   console.log(
-    "❌ Fatal startup error:"
+    "❌ Startup error:"
   );
 
   console.log(
@@ -634,11 +541,11 @@ createConnection().catch(error => {
   console.log("");
 
   /*
-   * Do not immediately crash.
+   * Keep the Node process alive.
    */
   setInterval(() => {
     console.log(
-      "⏳ Bot is waiting..."
+      "⏳ Bot is still waiting..."
     );
   }, 30000);
 });
