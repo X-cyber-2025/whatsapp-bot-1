@@ -1,33 +1,31 @@
 import "dotenv/config";
-import pino from "pino";
+
 import makeWASocket, {
   Browsers,
   DisconnectReason,
   useMultiFileAuthState
 } from "@whiskeysockets/baileys";
+
 import { Boom } from "@hapi/boom";
+import pino from "pino";
 import readline from "readline";
 
 const AUTH_DIR = process.env.AUTH_DIR || "./auth_info";
-const RETRY_DELAY = 15000;
-
-let socket = null;
-let stopping = false;
-let starting = false;
+const PHONE_NUMBER = (process.env.PHONE_NUMBER || "").replace(/\D/g, "");
 
 const logger = pino({
-  level: process.env.LOG_LEVEL || "info"
+  level: "silent"
 });
+
+let sock = null;
+let shuttingDown = false;
+let connected = false;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function cleanNumber(number) {
-  return String(number || "").replace(/\D/g, "");
-}
-
-function askPhoneNumber() {
+function getPhoneNumber() {
   return new Promise(resolve => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -35,334 +33,393 @@ function askPhoneNumber() {
     });
 
     rl.question(
-      "Enter WhatsApp number with country code (example: 8801XXXXXXXXX): ",
+      "WhatsApp number with country code: ",
       answer => {
         rl.close();
-        resolve(cleanNumber(answer));
+        resolve(String(answer).replace(/\D/g, ""));
       }
     );
   });
 }
 
-async function waitForRegistration(state) {
+async function start() {
   console.log("");
-  console.log("Waiting for phone connection...");
-  console.log("Keep this server running.");
-  console.log("Do NOT restart the server while entering the code.");
+  console.log("========================================");
+  console.log("        PIYAS WHATSAPP BOT");
+  console.log("        PAIRING WAIT MODE");
+  console.log("========================================");
   console.log("");
 
-  while (!stopping && !state.creds.registered) {
-    await sleep(3000);
-  }
+  const { state, saveCreds } =
+    await useMultiFileAuthState(AUTH_DIR);
 
-  if (state.creds.registered) {
-    console.log("");
-    console.log("========================================");
-    console.log(" WhatsApp phone linked successfully!");
-    console.log(" Authentication saved.");
-    console.log("========================================");
-    console.log("");
-  }
-}
+  sock = makeWASocket({
+    auth: state,
 
-async function startBot() {
-  if (stopping || starting) return;
+    logger,
 
-  starting = true;
+    browser: Browsers.macOS("Chrome"),
 
-  try {
-    const { state, saveCreds } =
-      await useMultiFileAuthState(AUTH_DIR);
+    printQRInTerminal: false,
 
-    socket = makeWASocket({
-      auth: state,
+    markOnlineOnConnect: false,
 
-      logger,
+    syncFullHistory: false,
 
-      browser: Browsers.macOS("Chrome"),
+    connectTimeoutMs: 120000,
 
-      printQRInTerminal: false,
+    defaultQueryTimeoutMs: 120000,
 
-      markOnlineOnConnect: false,
+    keepAliveIntervalMs: 20000,
 
-      syncFullHistory: false,
+    generateHighQualityLinkPreview: false
+  });
 
-      generateHighQualityLinkPreview: false,
+  sock.ev.on("creds.update", saveCreds);
 
-      connectTimeoutMs: 60000,
+  /*
+   * CONNECTION EVENTS
+   */
+  sock.ev.on("connection.update", async update => {
+    const {
+      connection,
+      lastDisconnect
+    } = update;
 
-      defaultQueryTimeoutMs: 60000,
+    if (connection === "connecting") {
+      console.log("🔄 Connecting to WhatsApp...");
+    }
 
-      keepAliveIntervalMs: 20000
-    });
+    if (connection === "open") {
+      connected = true;
 
-    socket.ev.on("creds.update", saveCreds);
+      console.log("");
+      console.log("========================================");
+      console.log("✅ WHATSAPP CONNECTED");
+      console.log("✅ BOT IS ONLINE");
+      console.log("========================================");
+      console.log("");
+    }
 
-    socket.ev.on("connection.update", async update => {
-      const {
-        connection,
-        lastDisconnect
-      } = update;
+    if (connection === "close") {
+      const statusCode =
+        new Boom(lastDisconnect?.error)
+          ?.output
+          ?.statusCode;
 
-      if (connection === "connecting") {
-        console.log("Connecting to WhatsApp...");
+      console.log("");
+      console.log(
+        `❌ WhatsApp connection closed. Code: ${
+          statusCode || "unknown"
+        }`
+      );
+      console.log("");
+
+      /*
+       * If the phone has already been linked,
+       * reconnect automatically.
+       */
+      if (
+        statusCode !== DisconnectReason.loggedOut &&
+        state.creds.registered &&
+        !shuttingDown
+      ) {
+        console.log(
+          "🔄 Existing session found."
+        );
+
+        console.log(
+          "⏳ Reconnecting in 15 seconds..."
+        );
+
+        await sleep(15000);
+
+        if (!shuttingDown) {
+          process.exit(0);
+        }
+
+        return;
       }
 
-      if (connection === "open") {
-        console.log("");
-        console.log("========================================");
-        console.log(" WhatsApp Connected Successfully");
-        console.log(" Bot is now online.");
-        console.log("========================================");
-        console.log("");
-      }
-
-      if (connection === "close") {
-        const statusCode =
-          new Boom(lastDisconnect?.error)
-            ?.output
-            ?.statusCode;
-
+      /*
+       * IMPORTANT:
+       *
+       * If the phone has NOT been linked yet,
+       * DO NOT generate another pairing code.
+       *
+       * Keep the process alive and wait.
+       */
+      if (
+        !state.creds.registered &&
+        !shuttingDown
+      ) {
         console.log("");
         console.log(
-          `WhatsApp connection closed. Code: ${
-            statusCode || "unknown"
-          }`
+          "⏳ PHONE IS NOT LINKED YET."
         );
+        console.log(
+          "⏳ Bot will keep waiting."
+        );
+        console.log(
+          "⚠️ No new pairing code will be generated automatically."
+        );
+        console.log("");
 
-        if (
-          statusCode === DisconnectReason.loggedOut
+        while (
+          !state.creds.registered &&
+          !shuttingDown
         ) {
-          console.log("");
-          console.log(
-            "WhatsApp logged out."
-          );
-          console.log(
-            "Delete the auth_info folder and pair again."
-          );
-          console.log("");
-          return;
-        }
-
-        if (!stopping) {
-          console.log(
-            `Reconnecting in ${
-              RETRY_DELAY / 1000
-            } seconds...`
-          );
-
-          await sleep(RETRY_DELAY);
-
-          if (!stopping) {
-            starting = false;
-            await startBot();
-          }
+          await sleep(5000);
         }
       }
-    });
-
-    /*
-     * If the account is already linked,
-     * do NOT generate a new pairing code.
-     */
-    if (state.creds.registered) {
-      console.log("");
-      console.log(
-        "Existing WhatsApp session found."
-      );
-      console.log(
-        "Waiting for WhatsApp connection..."
-      );
-      console.log("");
-
-      starting = false;
-      return;
     }
+  });
 
-    /*
-     * Wait a little before requesting
-     * the pairing code.
-     */
-    await sleep(5000);
-
-    if (stopping) return;
-
-    let phoneNumber =
-      cleanNumber(process.env.PHONE_NUMBER);
-
-    if (!phoneNumber) {
-      phoneNumber = await askPhoneNumber();
-    }
-
-    if (!phoneNumber) {
-      console.log("");
-      console.log(
-        "ERROR: WhatsApp phone number is missing."
-      );
-      console.log(
-        "Set PHONE_NUMBER in your .env file."
-      );
-      console.log("");
-
-      starting = false;
-      return;
-    }
-
-    if (phoneNumber.length < 8) {
-      console.log("");
-      console.log(
-        "ERROR: Invalid WhatsApp phone number."
-      );
-      console.log("");
-
-      starting = false;
-      return;
-    }
-
-    console.log("");
+  /*
+   * ALREADY LINKED
+   */
+  if (state.creds.registered) {
     console.log(
-      "Requesting WhatsApp pairing code..."
+      "🔐 Existing WhatsApp session found."
     );
-    console.log("");
 
-    try {
-      const pairingCode =
-        await socket.requestPairingCode(
-          phoneNumber
-        );
-
-      console.log("");
-      console.log("========================================");
-      console.log("       WHATSAPP PAIRING CODE");
-      console.log("");
-      console.log(`             ${pairingCode}`);
-      console.log("");
-      console.log("========================================");
-      console.log("");
-      console.log(
-        "Open WhatsApp on your phone:"
-      );
-      console.log(
-        "Settings > Linked devices > Link a device"
-      );
-      console.log(
-        "Then choose 'Link with phone number'"
-      );
-      console.log("");
-      console.log(
-        "Enter the code shown above."
-      );
-      console.log("");
-      console.log(
-        "The bot will WAIT until your phone is linked."
-      );
-      console.log(
-        "Do not restart the server during pairing."
-      );
-      console.log("");
-
-      await waitForRegistration(state);
-
-    } catch (error) {
-      console.log("");
-      console.error(
-        "Pairing code error:",
-        error?.message || error
-      );
-
-      console.log("");
-      console.log(
-        `Retrying in ${
-          RETRY_DELAY / 1000
-        } seconds...`
-      );
-
-      await sleep(RETRY_DELAY);
-
-      if (!stopping) {
-        starting = false;
-        await startBot();
-      }
-
-      return;
-    }
-
-  } catch (error) {
-    console.log("");
-    console.error(
-      "Bot startup error:",
-      error?.message || error
+    console.log(
+      "⏳ Waiting for WhatsApp connection..."
     );
-    console.log("");
 
-    if (!stopping) {
-      await sleep(RETRY_DELAY);
-      starting = false;
-      await startBot();
+    /*
+     * Keep process alive forever.
+     */
+    while (!shuttingDown) {
+      await sleep(10000);
     }
 
     return;
   }
 
-  starting = false;
+  /*
+   * WAIT BEFORE REQUESTING PAIRING CODE
+   */
+  console.log(
+    "⏳ Preparing WhatsApp connection..."
+  );
+
+  await sleep(8000);
+
+  if (shuttingDown) {
+    return;
+  }
+
+  /*
+   * GET PHONE NUMBER
+   */
+  let number = PHONE_NUMBER;
+
+  if (!number) {
+    number = await getPhoneNumber();
+  }
+
+  if (!number || number.length < 8) {
+    console.log("");
+    console.log(
+      "❌ Invalid WhatsApp phone number."
+    );
+
+    console.log(
+      "Set PHONE_NUMBER correctly in .env"
+    );
+
+    console.log("");
+    return;
+  }
+
+  /*
+   * CREATE ONLY ONE PAIRING CODE
+   */
+  try {
+    console.log("");
+    console.log(
+      "🔐 Requesting pairing code..."
+    );
+
+    const code =
+      await sock.requestPairingCode(number);
+
+    console.log("");
+    console.log("========================================");
+    console.log("🔐 WHATSAPP PAIRING CODE");
+    console.log("");
+    console.log(`        ${code}`);
+    console.log("");
+    console.log("========================================");
+    console.log("");
+
+    console.log(
+      "📱 WhatsApp:"
+    );
+
+    console.log(
+      "Settings → Linked devices → Link a device"
+    );
+
+    console.log(
+      "→ Link with phone number instead"
+    );
+
+    console.log("");
+    console.log(
+      "➡️ Enter the code shown above."
+    );
+
+    console.log("");
+    console.log(
+      "⏳ WAITING FOR PHONE TO CONNECT..."
+    );
+
+    console.log(
+      "⏳ The bot will NOT create another code."
+    );
+
+    console.log(
+      "⏳ Keep this server running."
+    );
+
+    console.log("");
+
+  } catch (error) {
+    console.log("");
+    console.log(
+      "❌ Could not generate pairing code."
+    );
+
+    console.log(
+      error?.message || error
+    );
+
+    console.log("");
+
+    /*
+     * DO NOT LOOP.
+     * Keep the server alive instead.
+     */
+    console.log(
+      "⏳ Bot will remain running."
+    );
+
+    console.log(
+      "⏳ Fix the connection and restart manually if necessary."
+    );
+
+    while (!shuttingDown) {
+      await sleep(10000);
+    }
+
+    return;
+  }
+
+  /*
+   * WAIT FOREVER UNTIL PHONE IS LINKED
+   */
+  while (
+    !state.creds.registered &&
+    !shuttingDown
+  ) {
+    await sleep(3000);
+
+    console.log(
+      "⏳ Waiting for WhatsApp phone connection..."
+    );
+  }
+
+  /*
+   * LINKED
+   */
+  if (state.creds.registered) {
+    console.log("");
+    console.log("========================================");
+    console.log("🎉 PHONE LINKED SUCCESSFULLY");
+    console.log("🎉 WHATSAPP BOT IS CONNECTED");
+    console.log("========================================");
+    console.log("");
+
+    /*
+     * Keep server alive.
+     */
+    while (!shuttingDown) {
+      await sleep(30000);
+    }
+  }
 }
 
 /*
- * Graceful shutdown
+ * SAFE SHUTDOWN
  */
 process.on("SIGINT", () => {
-  stopping = true;
+  shuttingDown = true;
 
   console.log("");
   console.log(
-    "Stopping WhatsApp bot..."
+    "🛑 Stopping bot..."
   );
 
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  stopping = true;
+  shuttingDown = true;
 
   console.log("");
   console.log(
-    "Stopping WhatsApp bot..."
+    "🛑 Stopping bot..."
   );
 
   process.exit(0);
 });
 
 /*
- * Prevent unexpected crashes
+ * Prevent unexpected process crash
  */
 process.on(
   "unhandledRejection",
   error => {
-    console.error(
-      "Unhandled promise rejection:",
-      error
+    console.log("");
+    console.log(
+      "⚠️ Unhandled error:"
     );
+    console.log(error);
+    console.log("");
   }
 );
 
 process.on(
   "uncaughtException",
   error => {
-    console.error(
-      "Unexpected exception:",
-      error
+    console.log("");
+    console.log(
+      "⚠️ Unexpected error:"
     );
+    console.log(error);
+    console.log("");
   }
 );
 
 /*
- * Start
+ * START BOT
  */
-console.log("");
-console.log("========================================");
-console.log("        PIYAS WHATSAPP BOT");
-console.log("        Pairing Safe Version");
-console.log("========================================");
-console.log("");
+start().catch(error => {
+  console.log("");
+  console.log(
+    "❌ Startup error:"
+  );
+  console.log(error);
+  console.log("");
 
-startBot();
+  /*
+   * Keep server alive instead of crashing.
+   */
+  setInterval(() => {
+    console.log(
+      "⏳ Bot is still waiting..."
+    );
+  }, 30000);
+});
